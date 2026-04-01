@@ -36,7 +36,7 @@ ASYNC_POLL_MAX_ATTEMPTS = 120   # was hard-coded 24; raised to 120 (~10 min)
 # ---------------------------------------------------------------------------
 
 def _noop(*args, **kwargs):
-    return None
+    pass
 
 
 def _status_code(data):
@@ -122,7 +122,6 @@ def poll_until_done(
         try:
             op = _poll_operation(op_id) or {}
         except Exception as e:
-            # Should not happen (api.py catches internally), but guard anyway
             on_status(domain, f"Async poll error: {e}")
             continue  # transient — do NOT count
 
@@ -262,8 +261,6 @@ class RampageQueue:
             return self.domains.get(domain)
 
     def loop(self):
-        idx = 0
-
         while True:
             if not self._cleanup_stopped():
                 return
@@ -273,77 +270,73 @@ class RampageQueue:
                 time.sleep(0.5)
                 continue
 
-            if idx >= len(seq):
-                idx = 0
+            # Iterate the full round fresh — no persistent index that can go
+            # stale when domains are added/removed mid-loop.
+            for domain in seq:
+                info = self._get_info(domain)
+                if not info:
+                    continue
 
-            domain = seq[idx]
-            idx   += 1
+                stop_event = info["stop_event"]
+                if stop_event.is_set():
+                    continue
 
-            info = self._get_info(domain)
-            if not info:
-                time.sleep(0.25)
-                continue
+                on_status     = info["on_status"]
+                on_success    = info["on_success"]
+                on_failure    = info["on_failure"]
+                on_next_check = info["on_next_check"]
 
-            stop_event    = info["stop_event"]
-            if stop_event.is_set():
-                continue
-
-            on_status     = info["on_status"]
-            on_success    = info["on_success"]
-            on_failure    = info["on_failure"]
-            on_next_check = info["on_next_check"]
-
-            try:
                 try:
-                    on_next_check(domain, time.time() + 1)
-                except Exception:
-                    pass
+                    try:
+                        on_next_check(domain, time.time() + 1)
+                    except Exception:
+                        pass
 
-                reg    = _register_domain(domain) or {}
-                code   = _status_code(reg)
-                status = str(reg.get("status", "")).upper()
+                    reg    = _register_domain(domain) or {}
+                    code   = _status_code(reg)
+                    status = str(reg.get("status", "")).upper()
 
-                if code == 202 or status == "PENDING":
-                    on_status(domain, "Registration submitted...")
-                    stop_event.set()
-                    poll_until_done(
-                        domain,
-                        reg.get("operationId", ""),
-                        on_status,
-                        on_success,
-                        on_failure,
-                        stop_event=stop_event,
-                        on_next_check=on_next_check,
-                    )
-                    continue
+                    if code == 202 or status == "PENDING":
+                        on_status(domain, "Registration submitted...")
+                        stop_event.set()
+                        poll_until_done(
+                            domain,
+                            reg.get("operationId", ""),
+                            on_status,
+                            on_success,
+                            on_failure,
+                            stop_event=stop_event,
+                            on_next_check=on_next_check,
+                        )
+                        continue
 
-                if code == 429:
-                    wait = max(1, _retry_after(reg, 30))
-                    on_status(domain, f"Rate-limited — wait {wait}s")
-                    _sleep_with_stop(stop_event, wait)
-                    continue
+                    if code == 429:
+                        wait = max(1, _retry_after(reg, 30))
+                        on_status(domain, f"Rate-limited — wait {wait}s")
+                        _sleep_with_stop(stop_event, wait)
+                        continue
 
-                if reg.get("name"):
-                    stop_event.set()
-                    on_success(domain, reg)
-                    continue
+                    if reg.get("name"):
+                        stop_event.set()
+                        on_success(domain, reg)
+                        continue
 
-                detail       = _detail(reg, "Not dropped yet - retrying...")
-                detail_lower = detail.lower()
+                    detail       = _detail(reg, "Not dropped yet - retrying...")
+                    detail_lower = detail.lower()
 
-                if code and 400 <= code < 500 and any(p in detail_lower for p in self.PERMANENT_ERRORS):
-                    stop_event.set()
-                    on_failure(domain, detail or "Permanent error")
-                elif code and code >= 500:
-                    on_status(domain, detail or "Server error - retrying...")
-                else:
-                    on_status(domain, detail or "Not dropped yet - retrying...")
+                    if code and 400 <= code < 500 and any(p in detail_lower for p in self.PERMANENT_ERRORS):
+                        stop_event.set()
+                        on_failure(domain, detail or "Permanent error")
+                    elif code and code >= 500:
+                        on_status(domain, detail or "Server error - retrying...")
+                    else:
+                        on_status(domain, detail or "Not dropped yet - retrying...")
 
-            except Exception as e:
-                if not stop_event.is_set():
-                    on_status(domain, f"Rampage error: {e}")
+                except Exception as e:
+                    if not stop_event.is_set():
+                        on_status(domain, f"Rampage error: {e}")
 
-            _sleep_with_stop(stop_event, 1)
+                _sleep_with_stop(stop_event, 1)
 
 
 # ---------------------------------------------------------------------------
