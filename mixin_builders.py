@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QTextEdit, QLabel,
     QTabWidget, QGroupBox, QComboBox, QTimeEdit, QCheckBox, QSpinBox,
     QSplitter, QProgressBar, QFrame, QFormLayout, QAbstractItemView,
+    QMessageBox,
 )
 from PyQt5.QtCore import Qt, QTimer, QTime
 
@@ -44,12 +45,12 @@ class UiBuildersMixin:
         """)
         root.addWidget(self.tabs)
 
-        self.tabs.addTab(self._build_sniper_tab(), "🎯 Sniper")
-        self.tabs.addTab(self._build_whois_tab(), "🔎 WHOIS Monitor")
-        self.tabs.addTab(self._build_ai_tab(), "🤖 AI Filter")
-        self.tabs.addTab(self._build_portfolio_tab(), "📦 Portfolio")
-        self.tabs.addTab(self._build_info_tab(), "🕒 Drop Times")
-        self.tabs.addTab(self._build_settings_tab(), "⚙️ Settings")
+        self.tabs.addTab(self._build_sniper_tab(), "\U0001f3af Sniper")
+        self.tabs.addTab(self._build_whois_tab(), "\U0001f50e WHOIS Monitor")
+        self.tabs.addTab(self._build_ai_tab(), "\U0001f916 AI Filter")
+        self.tabs.addTab(self._build_portfolio_tab(), "\U0001f4e6 Portfolio")
+        self.tabs.addTab(self._build_info_tab(), "\U0001f552 Drop Times")
+        self.tabs.addTab(self._build_settings_tab(), "\u2699\ufe0f Settings")
 
         root.addWidget(self._build_footer())
 
@@ -62,7 +63,7 @@ class UiBuildersMixin:
         hl = QHBoxLayout(h)
         hl.setContentsMargins(16, 0, 16, 0)
 
-        title = QLabel("🎯 Domain Drop Catcher v2.3 - Spaceship API")
+        title = QLabel("\U0001f3af Domain Drop Catcher v2.3 - Spaceship API")
         title.setStyleSheet("color:white;font-size:15px;font-weight:bold;")
 
         self.clock_lbl = QLabel()
@@ -108,11 +109,11 @@ class UiBuildersMixin:
             QTabBar::tab:hover { background:#24324a; color:#e2e8f0; }
         """)
 
-        self.sniper_tabs.addTab(self._build_monitoring_page(), "📡 Monitoring")
-        self.sniper_tabs.addTab(self._build_rampage_page(), "⚡ Rampage Queue")
+        self.sniper_tabs.addTab(self._build_monitoring_page(), "\U0001f4e1 Monitoring")
+        self.sniper_tabs.addTab(self._build_rampage_page(), "\u26a1 Rampage Queue")
         sl.addWidget(self.sniper_tabs)
 
-        sl.addWidget(_section_label("📋 Activity Log"))
+        sl.addWidget(_section_label("\U0001f4cb Activity Log"))
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumHeight(110)
@@ -126,37 +127,37 @@ class UiBuildersMixin:
         layout.setSpacing(6)
 
         search_row = QHBoxLayout()
-        self.monitor_search = QLineEdit(placeholderText="🔎 Filter monitored domains...")
+        self.monitor_search = QLineEdit(placeholderText="\U0001f50e Filter monitored domains...")
         self.monitor_search.textChanged.connect(self._filter_monitor_table)
         self.monitor_search.setStyleSheet("padding:6px 10px;border-radius:5px;")
         search_row.addWidget(self.monitor_search)
         layout.addLayout(search_row)
 
         input_row = QHBoxLayout()
-        self.input = QLineEdit(placeholderText="➕ Add a domain to monitoring (e.g. coolbrand.com) and press Enter")
+        self.input = QLineEdit(placeholderText="\u2795 Add a domain to monitoring (e.g. coolbrand.com) and press Enter")
         self.input.returnPressed.connect(self.add_domain)
         input_row.addWidget(self.input)
 
-        self.start_monitor_btn = QPushButton("🎯 Start Monitoring")
+        self.start_monitor_btn = QPushButton("\U0001f3af Start Monitoring")
         self.start_monitor_btn.clicked.connect(self.start_checked_monitoring)
         self.start_monitor_btn.setToolTip("Start queued Layer 1 monitoring for checked domains")
         input_row.addWidget(self.start_monitor_btn)
 
-        self.stop_checked_monitor_btn = QPushButton("⏹ Stop Checked")
+        self.stop_checked_monitor_btn = QPushButton("\u23f9 Stop Checked")
         self.stop_checked_monitor_btn.clicked.connect(self.stop_checked_monitoring)
         self.stop_checked_monitor_btn.setToolTip("Stop monitoring for checked domains")
         input_row.addWidget(self.stop_checked_monitor_btn)
 
-        self.stop_all_monitor_btn = QPushButton("🛑 Stop All")
+        self.stop_all_monitor_btn = QPushButton("\U0001f6d1 Stop All")
         self.stop_all_monitor_btn.clicked.connect(self.stop_all_monitoring)
         self.stop_all_monitor_btn.setToolTip("Stop monitoring for all domains without removing them")
         input_row.addWidget(self.stop_all_monitor_btn)
 
         for label, slot, tip in [
-            ("➕ Add", self.add_domain, "Add a single domain to monitoring"),
-            ("📥 Import .txt", self.import_txt, "Load one domain per line from a .txt file"),
-            ("🔍 WHOIS All", self.bulk_whois, "Run WHOIS on every monitored domain"),
-            ("📤 Export CSV", self.export_csv, "Save caught domains to CSV"),
+            ("\u2795 Add", self.add_domain, "Add a single domain to monitoring"),
+            ("\U0001f4e5 Import .txt", self.import_txt, "Load one domain per line from a .txt file"),
+            ("\U0001f50d WHOIS All", self.bulk_whois, "Run WHOIS on every monitored domain"),
+            ("\U0001f4e4 Export CSV", self.export_csv, "Save caught domains to CSV"),
         ]:
             b = QPushButton(label)
             b.clicked.connect(slot)
@@ -165,7 +166,7 @@ class UiBuildersMixin:
 
         layout.addLayout(input_row)
 
-        controls = QGroupBox("📡 Monitoring Controls")
+        controls = QGroupBox("\U0001f4e1 Monitoring Controls")
         controls.setStyleSheet(
             "QGroupBox{color:#94a3b8;font-size:11px;border:1px solid #1e293b;border-radius:6px;margin-top:4px;padding:4px;}"
             "QGroupBox::title{subcontrol-origin:margin;left:8px;}"
@@ -189,7 +190,7 @@ class UiBuildersMixin:
         self.custom_secs.valueChanged.connect(lambda *_: self._wake_monitor_scheduler())
         bar.addWidget(self.custom_secs)
 
-        self.mode_badge = QLabel("🟢 Normal (60s)")
+        self.mode_badge = QLabel("\U0001f7e2 Normal (60s)")
         self.mode_badge.setStyleSheet("color:#4ade80;font-weight:bold;padding:0 8px;")
         bar.addWidget(self.mode_badge)
 
@@ -211,6 +212,38 @@ class UiBuildersMixin:
         bar.addStretch()
         layout.addWidget(controls)
 
+        # ── Auto-Buy row ─────────────────────────────────────────────────────
+        autobuy_row = QHBoxLayout()
+        autobuy_row.setSpacing(8)
+
+        self.auto_buy_chk = QCheckBox("\u26a0\ufe0f Enable Auto-Buy")
+        self.auto_buy_chk.setChecked(False)
+        self.auto_buy_chk.setToolTip(
+            "HIGH RISK: When enabled, any domain that becomes available will be\n"
+            "purchased IMMEDIATELY and AUTOMATICALLY using your Spaceship account.\n"
+            "Make sure every domain in this list is one you actually want to buy."
+        )
+        self.auto_buy_chk.setStyleSheet(
+            "QCheckBox { color:#fbbf24; font-weight:bold; font-size:12px; padding:4px 8px; }"
+            "QCheckBox::indicator { width:16px; height:16px; }"
+            "QCheckBox::indicator:unchecked { border:2px solid #475569; border-radius:3px; background:#1e293b; }"
+            "QCheckBox::indicator:checked { border:2px solid #ef4444; border-radius:3px; background:#ef4444; }"
+        )
+        self.auto_buy_chk.toggled.connect(self._on_auto_buy_toggled)
+
+        self.auto_buy_warning_lbl = QLabel()
+        self.auto_buy_warning_lbl.setStyleSheet(
+            "color:#ef4444; font-weight:bold; font-size:11px; padding:2px 6px;"
+            "background:#450a0a; border:1px solid #7f1d1d; border-radius:4px;"
+        )
+        self.auto_buy_warning_lbl.setVisible(False)
+
+        autobuy_row.addWidget(self.auto_buy_chk)
+        autobuy_row.addWidget(self.auto_buy_warning_lbl)
+        autobuy_row.addStretch()
+        layout.addLayout(autobuy_row)
+        # ─────────────────────────────────────────────────────────────────────
+
         self.monitor_table = QTableWidget(0, 9)
         self._setup_domain_table(self.monitor_table, draggable=False)
         self.monitor_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -219,11 +252,42 @@ class UiBuildersMixin:
         )
         layout.addWidget(self.monitor_table)
 
-        self.monitor_stats_label = QLabel("📡 Monitoring domains: 0 | Active: 0")
+        self.monitor_stats_label = QLabel("\U0001f4e1 Monitoring domains: 0 | Active: 0")
         self.monitor_stats_label.setStyleSheet("color:#475569;font-size:11px;padding:2px 4px;")
         layout.addWidget(self.monitor_stats_label)
 
         return page
+
+    def _on_auto_buy_toggled(self, checked):
+        if checked:
+            reply = QMessageBox.warning(
+                self,
+                "\u26a0\ufe0f HIGH RISK — Enable Auto-Buy?",
+                "<b style='color:#ef4444;font-size:14px;'>\u26a0\ufe0f WARNING: Auto-Buy is a HIGH RISK feature.</b><br><br>"
+                "When enabled, <b>every domain in your monitoring list that becomes available "
+                "will be purchased IMMEDIATELY and AUTOMATICALLY</b> using your Spaceship account "
+                "and real money.<br><br>"
+                "<b>Before enabling, make sure:</b>"
+                "<ul>"
+                "<li>Every domain in your list is one you <u>actually want to buy</u>.</li>"
+                "<li>You have removed any old, test, or unwanted domains from the list.</li>"
+                "<li>You understand that registrations <u>cannot be undone or refunded</u>.</li>"
+                "</ul>"
+                "Do you want to enable Auto-Buy?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                self.auto_buy_chk.blockSignals(True)
+                self.auto_buy_chk.setChecked(False)
+                self.auto_buy_chk.blockSignals(False)
+                return
+            self.auto_buy_warning_lbl.setText("\U0001f534 AUTO-BUY ACTIVE — domains will be purchased automatically!")
+            self.auto_buy_warning_lbl.setVisible(True)
+            self.append_log("[AUTO-BUY] Enabled — monitor will automatically register available domains.")
+        else:
+            self.auto_buy_warning_lbl.setVisible(False)
+            self.append_log("[AUTO-BUY] Disabled — monitor will only check availability, not buy.")
 
     def _build_rampage_page(self):
         page = QWidget()
@@ -238,24 +302,24 @@ class UiBuildersMixin:
         layout.addWidget(info)
 
         search_row = QHBoxLayout()
-        self.rampage_search = QLineEdit(placeholderText="⚡ Filter rampage queue...")
+        self.rampage_search = QLineEdit(placeholderText="\u26a1 Filter rampage queue...")
         self.rampage_search.textChanged.connect(self._filter_rampage_table)
         self.rampage_search.setStyleSheet("padding:6px 10px;border-radius:5px;")
         search_row.addWidget(self.rampage_search)
         layout.addLayout(search_row)
 
         input_row = QHBoxLayout()
-        self.rampage_input = QLineEdit(placeholderText="⚡ Add a domain directly to the Rampage queue")
+        self.rampage_input = QLineEdit(placeholderText="\u26a1 Add a domain directly to the Rampage queue")
         self.rampage_input.returnPressed.connect(self.add_rampage_domain)
         input_row.addWidget(self.rampage_input)
 
         for label, slot, tip in [
-            ("➕ Add", self.add_rampage_domain, "Add a domain directly to the Rampage queue"),
-            ("📥 Add checked from Monitoring", self.add_checked_to_rampage, "Copy checked monitoring domains into the Rampage queue"),
-            ("▶️ Start Rampage", self.start_rampage_all, "Start Layer 1 + Layer 2 for all queued domains"),
-            ("⏹ Stop Checked", self.stop_checked_rampage, "Stop checked rampage domains"),
-            ("🛑 Stop All", self.stop_all_rampage, "Stop all rampage domains"),
-            ("🗑 Clear Queue", self.clear_rampage_queue, "Remove all domains from the Rampage queue"),
+            ("\u2795 Add", self.add_rampage_domain, "Add a domain directly to the Rampage queue"),
+            ("\U0001f4e5 Add checked from Monitoring", self.add_checked_to_rampage, "Copy checked monitoring domains into the Rampage queue"),
+            ("\u25b6\ufe0f Start Rampage", self.start_rampage_all, "Start Layer 1 + Layer 2 for all queued domains"),
+            ("\u23f9 Stop Checked", self.stop_checked_rampage, "Stop checked rampage domains"),
+            ("\U0001f6d1 Stop All", self.stop_all_rampage, "Stop all rampage domains"),
+            ("\U0001f5d1 Clear Queue", self.clear_rampage_queue, "Remove all domains from the Rampage queue"),
         ]:
             b = QPushButton(label)
             b.clicked.connect(slot)
@@ -264,7 +328,7 @@ class UiBuildersMixin:
 
         layout.addLayout(input_row)
 
-        controls = QGroupBox("⚡ Rampage Controls")
+        controls = QGroupBox("\u26a1 Rampage Controls")
         controls.setStyleSheet(
             "QGroupBox{color:#94a3b8;font-size:11px;border:1px solid #1e293b;border-radius:6px;margin-top:4px;padding:4px;}"
             "QGroupBox::title{subcontrol-origin:margin;left:8px;}"
@@ -272,13 +336,13 @@ class UiBuildersMixin:
         bar = QHBoxLayout(controls)
         bar.setSpacing(10)
 
-        self.priority_check = QCheckBox("⭐ Priority weighting")
+        self.priority_check = QCheckBox("\u2b50 Priority weighting")
         self.priority_check.setToolTip("Row 1 gets 3 queue slots, row 2 gets 2, the rest get 1.")
         self.priority_check.toggled.connect(self._on_priority_toggled)
         bar.addWidget(self.priority_check)
 
         bar.addWidget(_divider())
-        bar.addWidget(QLabel("🕒 Auto-Rampage at:"))
+        bar.addWidget(QLabel("\U0001f552 Auto-Rampage at:"))
 
         self.schedule_time = QTimeEdit()
         self.schedule_time.setDisplayFormat("HH:mm")
@@ -289,7 +353,7 @@ class UiBuildersMixin:
 
         bar.addWidget(_divider())
 
-        hint = QLabel("💡 Drag rows to change Layer 2 priority.")
+        hint = QLabel("\U0001f4a1 Drag rows to change Layer 2 priority.")
         hint.setStyleSheet("color:#c4b5fd;")
         bar.addWidget(hint)
 
@@ -305,14 +369,14 @@ class UiBuildersMixin:
         )
         layout.addWidget(self.rampage_table)
 
-        self.rampage_stats_label = QLabel("⚡ Rampage queue: 0 | Armed: 0")
+        self.rampage_stats_label = QLabel("\u26a1 Rampage queue: 0 | Armed: 0")
         self.rampage_stats_label.setStyleSheet("color:#475569;font-size:11px;padding:2px 4px;")
         layout.addWidget(self.rampage_stats_label)
 
         return page
 
     def _setup_domain_table(self, table, draggable=False):
-        table.setHorizontalHeaderLabels(["↕", "✓", "Domain", "Est. Drop Date", "Price", "WHOIS", "Status", "Next", "Actions"])
+        table.setHorizontalHeaderLabels(["\u2195", "\u2713", "Domain", "Est. Drop Date", "Price", "WHOIS", "Status", "Next", "Actions"])
         hh = table.horizontalHeader()
         hh.setSectionResizeMode(COL_DRAG, QHeaderView.Fixed)
         table.setColumnWidth(COL_DRAG, 28)
@@ -342,12 +406,12 @@ class UiBuildersMixin:
         wl = QVBoxLayout(w)
         wl.setSpacing(8)
 
-        wl.addWidget(_section_label("🔎 Manual WHOIS Check"))
+        wl.addWidget(_section_label("\U0001f50e Manual WHOIS Check"))
 
         r1 = QHBoxLayout()
         self.whois_input = QLineEdit(placeholderText="e.g. example.com")
         self.whois_input.returnPressed.connect(self._run_whois_manual)
-        b = QPushButton("🔍 Check Now")
+        b = QPushButton("\U0001f50d Check Now")
         b.clicked.connect(self._run_whois_manual)
         r1.addWidget(self.whois_input)
         r1.addWidget(b)
@@ -361,7 +425,7 @@ class UiBuildersMixin:
         )
         wl.addWidget(self.whois_output)
 
-        wl.addWidget(_section_label("⏱️ Auto WHOIS Monitor (Monitoring + Rampage)"))
+        wl.addWidget(_section_label("\u23f1\ufe0f Auto WHOIS Monitor (Monitoring + Rampage)"))
 
         r2 = QHBoxLayout()
         r2.addWidget(QLabel("Check every:"))
@@ -371,7 +435,7 @@ class UiBuildersMixin:
         self.whois_interval_cb.setCurrentText("1 minute")
         r2.addWidget(self.whois_interval_cb)
 
-        self.whois_auto_btn = QPushButton("▶️ Start")
+        self.whois_auto_btn = QPushButton("\u25b6\ufe0f Start")
         self.whois_auto_btn.setCheckable(True)
         self.whois_auto_btn.clicked.connect(self._toggle_auto_whois)
         r2.addWidget(self.whois_auto_btn)
@@ -417,7 +481,7 @@ class UiBuildersMixin:
 
         splitter = QSplitter(Qt.Vertical)
 
-        in_box = QGroupBox("🧠 Paste Domains Here")
+        in_box = QGroupBox("\U0001f9e0 Paste Domains Here")
         il = QVBoxLayout(in_box)
         self.ai_input = QTextEdit()
         self.ai_input.setPlaceholderText("coolbrand.com\nbesttech.net\nfinancehelp.org")
@@ -427,11 +491,11 @@ class UiBuildersMixin:
         opt = QHBoxLayout()
         opt.addStretch()
 
-        b_gen = QPushButton("⚡ Generate AI Prompt + Copy")
+        b_gen = QPushButton("\u26a1 Generate AI Prompt + Copy")
         b_gen.setStyleSheet("background:#7c3aed;color:white;font-weight:bold;padding:8px 18px;border-radius:6px;")
         b_gen.clicked.connect(self.generate_ai_prompt)
 
-        b_add = QPushButton("➕ Add All to Monitoring")
+        b_add = QPushButton("\u2795 Add All to Monitoring")
         b_add.clicked.connect(self._ai_add_all)
 
         opt.addWidget(b_gen)
@@ -440,7 +504,7 @@ class UiBuildersMixin:
 
         splitter.addWidget(in_box)
 
-        prev_box = QGroupBox("📋 Generated Prompt Preview")
+        prev_box = QGroupBox("\U0001f4cb Generated Prompt Preview")
         pl = QVBoxLayout(prev_box)
 
         self.ai_preview = QTextEdit()
@@ -449,7 +513,7 @@ class UiBuildersMixin:
         self.ai_preview.setPlaceholderText("Prompt appears here after clicking Generate...")
         pl.addWidget(self.ai_preview)
 
-        b_copy = QPushButton("📌 Copy Again")
+        b_copy = QPushButton("\U0001f4cc Copy Again")
         b_copy.clicked.connect(lambda: QApplication.clipboard().setText(self.ai_preview.toPlainText()))
         pl.addWidget(b_copy)
 
@@ -462,13 +526,13 @@ class UiBuildersMixin:
         pl = QVBoxLayout(w)
         pl.setSpacing(6)
 
-        self.p_stats = QLabel("📦 Caught: 0 | Est. Total Spent: $0.00")
+        self.p_stats = QLabel("\U0001f4e6 Caught: 0 | Est. Total Spent: $0.00")
         self.p_stats.setStyleSheet(
             "background:#1e293b;color:#a5b4fc;font-size:13px;font-weight:bold;padding:10px 14px;border-radius:6px;"
         )
         pl.addWidget(self.p_stats)
 
-        pl.addWidget(_section_label("📦 Caught Domains"))
+        pl.addWidget(_section_label("\U0001f4e6 Caught Domains"))
 
         self.portfolio_table = QTableWidget(0, 5)
         self.portfolio_table.setHorizontalHeaderLabels(["Domain", "Caught At", "Price Paid", "Status", "Notes"])
@@ -482,9 +546,9 @@ class UiBuildersMixin:
         pl.addWidget(self.portfolio_table)
 
         r = QHBoxLayout()
-        b1 = QPushButton("📤 Export Portfolio CSV")
+        b1 = QPushButton("\U0001f4e4 Export Portfolio CSV")
         b1.clicked.connect(self.export_portfolio)
-        b2 = QPushButton("🗑 Clear Portfolio")
+        b2 = QPushButton("\U0001f5d1 Clear Portfolio")
         b2.clicked.connect(self._clear_portfolio)
         r.addWidget(b1)
         r.addWidget(b2)
@@ -501,7 +565,7 @@ class UiBuildersMixin:
         w = QWidget()
         il = QVBoxLayout(w)
 
-        il.addWidget(_section_label("🕒 TLD Drop Windows (Freiburg local time)"))
+        il.addWidget(_section_label("\U0001f552 TLD Drop Windows (Freiburg local time)"))
 
         dt = QTableWidget(len(DROP_TIMES_TABLE), 4)
         dt.setHorizontalHeaderLabels(["TLD", "UTC", "Local", "Notes"])
@@ -515,13 +579,13 @@ class UiBuildersMixin:
                 dt.setItem(i, j, QTableWidgetItem(v))
         il.addWidget(dt)
 
-        il.addWidget(_section_label("💵 Standard Registration Prices"))
+        il.addWidget(_section_label("\U0001f4b5 Standard Registration Prices"))
         pl = QLabel(" " + " | ".join(f".{t}: ${p:.2f}" for t, p in sorted(TLD_PRICES.items(), key=lambda x: x[1])))
         pl.setWordWrap(True)
         pl.setStyleSheet("background:#1e293b;color:#94a3b8;font-family:Consolas;font-size:11px;padding:8px;border-radius:6px;")
         il.addWidget(pl)
 
-        il.addWidget(_section_label("🧭 Workflow"))
+        il.addWidget(_section_label("\U0001f9ed Workflow"))
         g = QTextEdit()
         g.setReadOnly(True)
         g.setStyleSheet("background:#1e293b;color:#cbd5e1;font-size:12px;padding:8px;")
@@ -543,7 +607,7 @@ class UiBuildersMixin:
         sl = QVBoxLayout(w)
         sl.setSpacing(8)
 
-        sl.addWidget(_section_label("⚙️ Application Settings"))
+        sl.addWidget(_section_label("\u2699\ufe0f Application Settings"))
 
         formbox = QGroupBox("General")
         formbox.setStyleSheet(
