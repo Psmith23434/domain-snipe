@@ -9,6 +9,7 @@ import threading
 from datetime import timezone
 
 from api import check_domain, register_domain
+from sniper import poll_until_done
 from constants import (
     MONITOR_MIN_PER_DOMAIN_INTERVAL,
     MONITOR_MAX_USER_RPS_DELAY,
@@ -183,6 +184,7 @@ class MonitorMixin:
 
                 self.signals.status_update.emit(domain, "Available - registering...")
                 reg = register_domain(domain) or {}
+
                 with self.monitor_scheduler_lock:
                     st = self.monitor_runtime.get(domain)
                     if st:
@@ -190,7 +192,25 @@ class MonitorMixin:
                         st["inflight"] = False
                 self.monitor_next_ts.pop(domain, None)
 
-                if reg.get("status") == "PENDING" or reg.get("name"):
+                code = int(reg.get("_status_code", 0) or 0)
+                status = str(reg.get("status", "")).upper()
+
+                if code == 202 or status == "PENDING":
+                    op_id = reg.get("operationId", "")
+                    self.signals.status_update.emit(domain, "Registration submitted - waiting for confirmation...")
+                    poll_until_done(
+                        domain=domain,
+                        op_id=op_id,
+                        on_status=lambda d, s: self.signals.status_update.emit(d, s),
+                        on_success=lambda d, r: self.signals.success.emit(d, r),
+                        on_failure=lambda d, e: self.signals.failure.emit(d, e),
+                        stop_event=None,
+                        on_next_check=lambda d, ts: self.signals.next_check.emit(d, ts, "monitor"),
+                    )
+                    self._wake_monitor_scheduler()
+                    return
+
+                if reg.get("name"):
                     self.signals.success.emit(domain, reg)
                 else:
                     detail = str(
