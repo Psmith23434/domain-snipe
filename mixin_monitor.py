@@ -180,14 +180,13 @@ class MonitorMixin:
                     self._wake_monitor_scheduler()
                     return
 
-                # ── Auto-Buy gate ────────────────────────────────────────────
-                auto_buy_enabled = getattr(self, "auto_buy_chk", None) and self.auto_buy_chk.isChecked()
-                if not auto_buy_enabled:
-                    # Auto-Buy is OFF: just report available, do not purchase.
+                # ── Two-layer Auto-Buy gate ───────────────────────────────────
+                # Both the global checkbox AND the per-row toggle must be ON.
+                if not self.domain_autobuy_enabled(domain):
                     nxt = now + cycle_target
                     self._monitor_set_next(
                         domain, nxt,
-                        "\u2705 Available (Auto-Buy OFF - not purchasing)",
+                        "\u2705 Available (Auto-Buy OFF — not purchasing)",
                         "#4ade80",
                     )
                     self._wake_monitor_scheduler()
