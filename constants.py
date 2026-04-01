@@ -41,15 +41,16 @@ DROP_TIMES_TABLE = [
 ]
 
 # Table column indices
-COL_DRAG   = 0
-COL_SNIPE  = 1
-COL_DOMAIN = 2
-COL_DROP   = 3
-COL_PRICE  = 4
-COL_WHOIS  = 5
-COL_STATUS = 6
-COL_NEXT   = 7
-COL_ACT    = 8
+COL_DRAG    = 0
+COL_SNIPE   = 1   # selection checkbox  (✓)
+COL_AUTOBUY = 2   # per-domain auto-buy (🎯)
+COL_DOMAIN  = 3
+COL_DROP    = 4
+COL_PRICE   = 5
+COL_WHOIS   = 6
+COL_STATUS  = 7
+COL_NEXT    = 8
+COL_ACT     = 9
 
 # Timing constants
 MONITOR_MIN_PER_DOMAIN_INTERVAL = 60.0

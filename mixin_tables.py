@@ -6,14 +6,14 @@ import re
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QHBoxLayout, QPushButton,
-    QTableWidgetItem, QMenu, QLabel, QCheckBox,
+    QTableWidgetItem, QMenu, QLabel,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 
 from constants import (
-    COL_DRAG, COL_SNIPE, COL_DOMAIN, COL_DROP, COL_PRICE,
-    COL_WHOIS, COL_STATUS, COL_NEXT, COL_ACT,
+    COL_DRAG, COL_SNIPE, COL_AUTOBUY, COL_DOMAIN,
+    COL_DROP, COL_PRICE, COL_WHOIS, COL_STATUS, COL_NEXT, COL_ACT,
 )
 from utils import normalize_domain, get_tld_price, get_drop_window
 from persistence import save_watchlist
@@ -24,21 +24,32 @@ class UiTablesMixin:
     """Mixin: table helpers, row factories, context menu, stats bar."""
 
     # ------------------------------------------------------------------ #
-    #  Per-domain Auto-Buy toggle registry                                 #
+    #  Per-domain Auto-Buy helpers                                         #
     # ------------------------------------------------------------------ #
-    def _get_autobuy_registry(self):
-        """Lazy-init a dict {domain: QCheckBox} for per-row auto-buy toggles."""
-        if not hasattr(self, "_autobuy_toggles"):
-            self._autobuy_toggles = {}
-        return self._autobuy_toggles
+    def _autobuy_item(self, checked=False):
+        """Create a checkable QTableWidgetItem for the COL_AUTOBUY column."""
+        item = QTableWidgetItem()
+        item.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+        item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+        item.setTextAlignment(Qt.AlignCenter)
+        item.setToolTip(
+            "Per-domain Auto-Buy toggle (\U0001f3af).\n"
+            "When CHECKED here AND the global \u26a0\ufe0f Enable Auto-Buy is ON,\n"
+            "this domain will be purchased automatically when available.\n"
+            "Leave unchecked to monitor without buying."
+        )
+        return item
 
     def domain_autobuy_enabled(self, domain):
-        """Return True only when the global AND per-row Auto-Buy are both ON."""
+        """Return True only when global AND per-row Auto-Buy are both ON."""
         global_on = getattr(self, "auto_buy_chk", None) and self.auto_buy_chk.isChecked()
         if not global_on:
             return False
-        chk = self._get_autobuy_registry().get(domain)
-        return bool(chk and chk.isChecked())
+        row = self.monitor_rows.get(domain)
+        if row is None:
+            return False
+        item = self.monitor_table.item(row, COL_AUTOBUY)
+        return bool(item and item.checkState() == Qt.Checked)
 
     # ------------------------------------------------------------------ #
     #  Row helpers                                                         #
@@ -50,25 +61,6 @@ class UiTablesMixin:
         b.clicked.connect(slot)
         return b
 
-    def _make_autobuy_toggle(self, domain):
-        """Create a styled per-row Auto-Buy QCheckBox and register it."""
-        chk = QCheckBox("\U0001f3af")
-        chk.setChecked(False)
-        chk.setToolTip(
-            "Per-domain Auto-Buy toggle.\n"
-            "When THIS is checked AND the global \u26a0\ufe0f Enable Auto-Buy is ON,\n"
-            "this domain will be purchased automatically when it becomes available.\n"
-            "Leave unchecked to monitor without buying."
-        )
-        chk.setStyleSheet(
-            "QCheckBox { color:#fbbf24; font-size:13px; padding:0 2px; }"
-            "QCheckBox::indicator { width:14px; height:14px; }"
-            "QCheckBox::indicator:unchecked { border:2px solid #475569; border-radius:3px; background:#1e293b; }"
-            "QCheckBox::indicator:checked   { border:2px solid #f59e0b; border-radius:3px; background:#f59e0b; }"
-        )
-        self._get_autobuy_registry()[domain] = chk
-        return chk
-
     def _make_action_cell(self, domain, mode):
         cell = QWidget()
         cl = QHBoxLayout(cell)
@@ -76,21 +68,19 @@ class UiTablesMixin:
         cl.setSpacing(2)
 
         if mode == "monitor":
-            # Per-row Auto-Buy toggle (first widget in cell)
-            cl.addWidget(self._make_autobuy_toggle(domain))
             buttons = [
-                self._row_button("W",  "Run WHOIS",               lambda _, d=domain: self.run_whois_row(d)),
-                self._row_button("$",  "Check premium",            lambda _, d=domain: self.run_premium_check(d)),
-                self._row_button("\u25b6",  "Start Monitoring",   lambda _, d=domain: self.start_monitor_for_domain(d)),
-                self._row_button("\u23f9", "Stop Monitoring",      lambda _, d=domain: self.stop_domain(d, "monitor")),
-                self._row_button("\u26a1", "Add to Rampage queue", lambda _, d=domain: self.queue_from_monitor(d)),
+                self._row_button("W",  "Run WHOIS",                lambda _, d=domain: self.run_whois_row(d)),
+                self._row_button("$",  "Check premium",             lambda _, d=domain: self.run_premium_check(d)),
+                self._row_button("\u25b6",  "Start Monitoring",    lambda _, d=domain: self.start_monitor_for_domain(d)),
+                self._row_button("\u23f9", "Stop Monitoring",       lambda _, d=domain: self.stop_domain(d, "monitor")),
+                self._row_button("\u26a1", "Add to Rampage queue",  lambda _, d=domain: self.queue_from_monitor(d)),
                 self._row_button("\u2716", "Remove from Monitoring",lambda _, d=domain: self.remove_monitor(d)),
             ]
         else:
             buttons = [
-                self._row_button("W",  "Run WHOIS",               lambda _, d=domain: self.run_whois_row(d)),
-                self._row_button("\u25b6",  "Start Rampage",       lambda _, d=domain: self.launch_rampage(d)),
-                self._row_button("\u23f9", "Stop Rampage",          lambda _, d=domain: self.stop_domain(d, "rampage")),
+                self._row_button("W",  "Run WHOIS",                    lambda _, d=domain: self.run_whois_row(d)),
+                self._row_button("\u25b6",  "Start Rampage",           lambda _, d=domain: self.launch_rampage(d)),
+                self._row_button("\u23f9", "Stop Rampage",              lambda _, d=domain: self.stop_domain(d, "rampage")),
                 self._row_button("\u2716", "Remove from Rampage queue", lambda _, d=domain: self.remove_rampage(d)),
             ]
 
@@ -132,14 +122,15 @@ class UiTablesMixin:
 
         row = self.monitor_table.rowCount()
         self.monitor_table.insertRow(row)
-        self.monitor_table.setItem(row, COL_DRAG,   self._new_drag_item(False))
-        self.monitor_table.setItem(row, COL_SNIPE,  self._checked_item(True))
-        self.monitor_table.setItem(row, COL_DOMAIN, QTableWidgetItem(domain))
-        self.monitor_table.setItem(row, COL_DROP,   self._center_item("Run WHOIS", "#64748b"))
-        self.monitor_table.setItem(row, COL_PRICE,  self._center_item(get_tld_price(domain), "#4ade80"))
-        self.monitor_table.setItem(row, COL_WHOIS,  self._center_item("-"))
-        self.monitor_table.setItem(row, COL_STATUS, QTableWidgetItem("Idle"))
-        self.monitor_table.setItem(row, COL_NEXT,   self._center_item(get_drop_window(domain), "#64748b"))
+        self.monitor_table.setItem(row, COL_DRAG,    self._new_drag_item(False))
+        self.monitor_table.setItem(row, COL_SNIPE,   self._checked_item(True))
+        self.monitor_table.setItem(row, COL_AUTOBUY, self._autobuy_item(False))
+        self.monitor_table.setItem(row, COL_DOMAIN,  QTableWidgetItem(domain))
+        self.monitor_table.setItem(row, COL_DROP,    self._center_item("Run WHOIS", "#64748b"))
+        self.monitor_table.setItem(row, COL_PRICE,   self._center_item(get_tld_price(domain), "#4ade80"))
+        self.monitor_table.setItem(row, COL_WHOIS,   self._center_item("-"))
+        self.monitor_table.setItem(row, COL_STATUS,  QTableWidgetItem("Idle"))
+        self.monitor_table.setItem(row, COL_NEXT,    self._center_item(get_drop_window(domain), "#64748b"))
         self.monitor_table.setCellWidget(row, COL_ACT, self._make_action_cell(domain, "monitor"))
         self.monitor_rows[domain] = row
 
@@ -156,14 +147,15 @@ class UiTablesMixin:
 
         row = self.rampage_table.rowCount()
         self.rampage_table.insertRow(row)
-        self.rampage_table.setItem(row, COL_DRAG,   self._new_drag_item(True))
-        self.rampage_table.setItem(row, COL_SNIPE,  self._checked_item(True))
-        self.rampage_table.setItem(row, COL_DOMAIN, QTableWidgetItem(domain))
-        self.rampage_table.setItem(row, COL_DROP,   self._center_item("Run WHOIS", "#64748b"))
-        self.rampage_table.setItem(row, COL_PRICE,  self._center_item(get_tld_price(domain), "#4ade80"))
-        self.rampage_table.setItem(row, COL_WHOIS,  self._center_item("-"))
-        self.rampage_table.setItem(row, COL_STATUS, QTableWidgetItem("Queued"))
-        self.rampage_table.setItem(row, COL_NEXT,   self._center_item(get_drop_window(domain), "#64748b"))
+        self.rampage_table.setItem(row, COL_DRAG,    self._new_drag_item(True))
+        self.rampage_table.setItem(row, COL_SNIPE,   self._checked_item(True))
+        self.rampage_table.setItem(row, COL_AUTOBUY, self._center_item("-", "#334155"))  # N/A for rampage
+        self.rampage_table.setItem(row, COL_DOMAIN,  QTableWidgetItem(domain))
+        self.rampage_table.setItem(row, COL_DROP,    self._center_item("Run WHOIS", "#64748b"))
+        self.rampage_table.setItem(row, COL_PRICE,   self._center_item(get_tld_price(domain), "#4ade80"))
+        self.rampage_table.setItem(row, COL_WHOIS,   self._center_item("-"))
+        self.rampage_table.setItem(row, COL_STATUS,  QTableWidgetItem("Queued"))
+        self.rampage_table.setItem(row, COL_NEXT,    self._center_item(get_drop_window(domain), "#64748b"))
         self.rampage_table.setCellWidget(row, COL_ACT, self._make_action_cell(domain, "rampage"))
         self.rampage_rows[domain] = row
         self.refresh_stats()
@@ -175,8 +167,6 @@ class UiTablesMixin:
             return
 
         self.stop_domain(domain, mode)
-        # Clean up auto-buy toggle registry
-        self._get_autobuy_registry().pop(domain, None)
         table.removeRow(row)
         nextmap.pop(domain, None)
         self._rebuild_rows(table, rowmap, mode)
@@ -204,7 +194,7 @@ class UiTablesMixin:
         self.append_log("Rampage row order updated.")
 
     # ------------------------------------------------------------------ #
-    #  Check All / Uncheck All                                            #
+    #  Check All / Uncheck All  +  Arm All / Disarm All                   #
     # ------------------------------------------------------------------ #
     def check_all_monitor(self):
         for row in range(self.monitor_table.rowCount()):
@@ -229,6 +219,26 @@ class UiTablesMixin:
             item = self.rampage_table.item(row, COL_SNIPE)
             if item:
                 item.setCheckState(Qt.Unchecked)
+
+    def _arm_all_autobuy(self):
+        count = 0
+        for row in range(self.monitor_table.rowCount()):
+            item = self.monitor_table.item(row, COL_AUTOBUY)
+            if item and item.checkState() != Qt.Checked:
+                item.setCheckState(Qt.Checked)
+                count += 1
+        self.append_log(f"[AUTO-BUY] Armed {count} domain(s).")
+        self.refresh_stats()
+
+    def _disarm_all_autobuy(self):
+        count = 0
+        for row in range(self.monitor_table.rowCount()):
+            item = self.monitor_table.item(row, COL_AUTOBUY)
+            if item and item.checkState() == Qt.Checked:
+                item.setCheckState(Qt.Unchecked)
+                count += 1
+        self.append_log(f"[AUTO-BUY] Disarmed {count} domain(s).")
+        self.refresh_stats()
 
     # ------------------------------------------------------------------ #
     #  Filters                                                            #
@@ -298,11 +308,10 @@ class UiTablesMixin:
             menu.addAction("\u23f9 Stop Monitoring",      lambda d=domain: self.stop_domain(d, "monitor"))
             menu.addAction("\u26a1 Add to Rampage Queue", lambda d=domain: self.queue_from_monitor(d))
             menu.addSeparator()
-            # Per-row auto-buy quick toggle from context menu
-            chk = self._get_autobuy_registry().get(domain)
-            if chk is not None:
-                label = "\U0001f3af Disable Auto-Buy for this domain" if chk.isChecked() else "\U0001f3af Enable Auto-Buy for this domain"
-                menu.addAction(label, lambda d=domain: self._toggle_autobuy_for(d))
+            ab_item = self.monitor_table.item(row, COL_AUTOBUY)
+            is_armed = ab_item and ab_item.checkState() == Qt.Checked
+            label = "\U0001f3af Disarm Auto-Buy for this domain" if is_armed else "\U0001f3af Arm Auto-Buy for this domain"
+            menu.addAction(label, lambda d=domain, r=row: self._toggle_autobuy_row(r))
         else:
             menu.addSeparator()
             menu.addAction("\u25b6\ufe0f Start Rampage", lambda d=domain: self.launch_rampage(d))
@@ -320,11 +329,11 @@ class UiTablesMixin:
         mkts.addAction("Flippa",             lambda d=domain: webbrowser.open(f"https://flippa.com/search?filter[keyword]={d}"))
 
         appr = menu.addMenu("\U0001f4b0 Appraisal Tools")
-        appr.addAction("HumbleWorth AI",   lambda d=domain: webbrowser.open(f"https://humbleworth.com/valuation/single?domain={d}"))
-        appr.addAction("Hazlo.ai",         lambda d=domain: webbrowser.open(f"https://hazlo.ai/appraisal?domain={d}"))
-        appr.addAction("Dynadot Appraisal",lambda d=domain: webbrowser.open(f"https://www.dynadot.com/domain/appraisal?domain={d}"))
-        appr.addAction("Atom.com",         lambda d=domain: webbrowser.open(f"https://www.atom.com/domain-appraisal?domain={d}"))
-        appr.addAction("Estibot",          lambda d=domain: webbrowser.open(f"https://www.estibot.com/appraise.php?a={d}"))
+        appr.addAction("HumbleWorth AI",    lambda d=domain: webbrowser.open(f"https://humbleworth.com/valuation/single?domain={d}"))
+        appr.addAction("Hazlo.ai",          lambda d=domain: webbrowser.open(f"https://hazlo.ai/appraisal?domain={d}"))
+        appr.addAction("Dynadot Appraisal", lambda d=domain: webbrowser.open(f"https://www.dynadot.com/domain/appraisal?domain={d}"))
+        appr.addAction("Atom.com",          lambda d=domain: webbrowser.open(f"https://www.atom.com/domain-appraisal?domain={d}"))
+        appr.addAction("Estibot",           lambda d=domain: webbrowser.open(f"https://www.estibot.com/appraise.php?a={d}"))
 
         research = menu.addMenu("\U0001f9ea Research")
         research.addAction("DomainTools WHOIS", lambda d=domain: webbrowser.open(f"https://whois.domaintools.com/{d}"))
@@ -339,12 +348,16 @@ class UiTablesMixin:
 
         menu.exec_(table.viewport().mapToGlobal(pos))
 
-    def _toggle_autobuy_for(self, domain):
-        chk = self._get_autobuy_registry().get(domain)
-        if chk:
-            chk.setChecked(not chk.isChecked())
-            state = "enabled" if chk.isChecked() else "disabled"
-            self.append_log(f"[AUTO-BUY] Per-row toggle {state} for {domain}.")
+    def _toggle_autobuy_row(self, row):
+        item = self.monitor_table.item(row, COL_AUTOBUY)
+        if item:
+            new_state = Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
+            item.setCheckState(new_state)
+            domain_item = self.monitor_table.item(row, COL_DOMAIN)
+            domain = domain_item.text() if domain_item else "?"
+            state_str = "armed" if new_state == Qt.Checked else "disarmed"
+            self.append_log(f"[AUTO-BUY] {domain} {state_str}.")
+            self.refresh_stats()
 
     # ------------------------------------------------------------------ #
     #  Stats bar                                                          #
@@ -358,11 +371,11 @@ class UiTablesMixin:
             if ev and not ev.is_set():
                 armed_rampage += 1
 
-        # Count how many monitor domains have per-row auto-buy ON
-        autobuy_armed = sum(
-            1 for d, chk in self._get_autobuy_registry().items()
-            if d in self.monitor_rows and chk.isChecked()
-        )
+        autobuy_armed = 0
+        for row in range(self.monitor_table.rowCount()):
+            item = self.monitor_table.item(row, COL_AUTOBUY)
+            if item and item.checkState() == Qt.Checked:
+                autobuy_armed += 1
         ab_suffix = f" | \U0001f3af Auto-Buy armed: {autobuy_armed}" if autobuy_armed else ""
 
         self.monitor_stats_label.setText(

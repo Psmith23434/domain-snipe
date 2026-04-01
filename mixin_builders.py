@@ -12,8 +12,8 @@ from PyQt5.QtCore import Qt, QTimer, QTime
 from sniper import POLL_MODES
 from constants import (
     TLD_PRICES, DROP_TIMES_TABLE,
-    COL_DRAG, COL_SNIPE, COL_DOMAIN, COL_DROP, COL_PRICE,
-    COL_WHOIS, COL_STATUS, COL_NEXT, COL_ACT,
+    COL_DRAG, COL_SNIPE, COL_AUTOBUY, COL_DOMAIN,
+    COL_DROP, COL_PRICE, COL_WHOIS, COL_STATUS, COL_NEXT, COL_ACT,
 )
 from utils import get_tld_price, get_drop_window
 from widgets import DraggableTable, Signals, _divider, _section_label
@@ -124,6 +124,7 @@ class UiBuildersMixin:
         layout = QVBoxLayout(page)
         layout.setSpacing(6)
 
+        # Filter bar
         search_row = QHBoxLayout()
         self.monitor_search = QLineEdit(placeholderText="\U0001f50e Filter monitored domains...")
         self.monitor_search.textChanged.connect(self._filter_monitor_table)
@@ -131,6 +132,7 @@ class UiBuildersMixin:
         search_row.addWidget(self.monitor_search)
         layout.addLayout(search_row)
 
+        # Domain input + action buttons
         input_row = QHBoxLayout()
         self.input = QLineEdit(placeholderText="\u2795 Add a domain to monitoring (e.g. coolbrand.com) and press Enter")
         self.input.returnPressed.connect(self.add_domain)
@@ -152,10 +154,10 @@ class UiBuildersMixin:
         input_row.addWidget(self.stop_all_monitor_btn)
 
         for label, slot, tip in [
-            ("\u2795 Add",         self.add_domain,   "Add a single domain to monitoring"),
-            ("\U0001f4e5 Import .txt", self.import_txt, "Load one domain per line from a .txt file"),
-            ("\U0001f50d WHOIS All",   self.bulk_whois,  "Run WHOIS on every monitored domain"),
-            ("\U0001f4e4 Export CSV",  self.export_csv,  "Save caught domains to CSV"),
+            ("\u2795 Add",             self.add_domain,   "Add a single domain to monitoring"),
+            ("\U0001f4e5 Import .txt", self.import_txt,   "Load one domain per line from a .txt file"),
+            ("\U0001f50d WHOIS All",   self.bulk_whois,   "Run WHOIS on every monitored domain"),
+            ("\U0001f4e4 Export CSV",  self.export_csv,   "Save caught domains to CSV"),
         ]:
             b = QPushButton(label)
             b.clicked.connect(slot)
@@ -164,51 +166,88 @@ class UiBuildersMixin:
 
         layout.addLayout(input_row)
 
-        # ── Check All / Uncheck All row ──────────────────────────────────
-        sel_row = QHBoxLayout()
-        sel_row.setSpacing(6)
+        # ── Selection + Auto-Buy bulk controls (ABOVE global toggle) ─────
+        bulk_row = QHBoxLayout()
+        bulk_row.setSpacing(6)
+
+        # Selection group
         lbl_sel = QLabel("\u2713 Selection:")
         lbl_sel.setStyleSheet("color:#64748b;font-size:11px;")
-        sel_row.addWidget(lbl_sel)
+        bulk_row.addWidget(lbl_sel)
 
-        btn_check_all = QPushButton("\u2611 Check All")
-        btn_check_all.setToolTip("Check all domains in the monitoring table")
-        btn_check_all.setFixedHeight(24)
-        btn_check_all.setStyleSheet("font-size:11px;padding:2px 8px;")
-        btn_check_all.clicked.connect(self.check_all_monitor)
-        sel_row.addWidget(btn_check_all)
+        btn_ca = QPushButton("\u2611 Check All")
+        btn_ca.setFixedHeight(24)
+        btn_ca.setStyleSheet("font-size:11px;padding:2px 8px;")
+        btn_ca.setToolTip("Check all domains in the monitoring table")
+        btn_ca.clicked.connect(self.check_all_monitor)
+        bulk_row.addWidget(btn_ca)
 
-        btn_uncheck_all = QPushButton("\u2610 Uncheck All")
-        btn_uncheck_all.setToolTip("Uncheck all domains in the monitoring table")
-        btn_uncheck_all.setFixedHeight(24)
-        btn_uncheck_all.setStyleSheet("font-size:11px;padding:2px 8px;")
-        btn_uncheck_all.clicked.connect(self.uncheck_all_monitor)
-        sel_row.addWidget(btn_uncheck_all)
+        btn_ua = QPushButton("\u2610 Uncheck All")
+        btn_ua.setFixedHeight(24)
+        btn_ua.setStyleSheet("font-size:11px;padding:2px 8px;")
+        btn_ua.setToolTip("Uncheck all domains in the monitoring table")
+        btn_ua.clicked.connect(self.uncheck_all_monitor)
+        bulk_row.addWidget(btn_ua)
 
-        sel_row.addWidget(_divider())
+        bulk_row.addWidget(_divider())
 
-        lbl_ab = QLabel("\U0001f3af Auto-Buy per domain:")
-        lbl_ab.setStyleSheet("color:#64748b;font-size:11px;")
-        sel_row.addWidget(lbl_ab)
+        # Auto-Buy arm group
+        lbl_ab = QLabel("\U0001f3af Auto-Buy:")
+        lbl_ab.setStyleSheet("color:#fbbf24;font-size:11px;font-weight:bold;")
+        bulk_row.addWidget(lbl_ab)
 
-        btn_ab_all = QPushButton("\U0001f3af Arm All")
-        btn_ab_all.setToolTip("Enable Auto-Buy toggle for every domain in the monitoring table")
-        btn_ab_all.setFixedHeight(24)
-        btn_ab_all.setStyleSheet("font-size:11px;padding:2px 8px;color:#fbbf24;")
-        btn_ab_all.clicked.connect(self._arm_all_autobuy)
-        sel_row.addWidget(btn_ab_all)
+        btn_arm = QPushButton("\U0001f3af Arm All")
+        btn_arm.setFixedHeight(24)
+        btn_arm.setStyleSheet("font-size:11px;padding:2px 8px;color:#fbbf24;")
+        btn_arm.setToolTip("Enable the Auto-Buy column for every domain in the monitoring table")
+        btn_arm.clicked.connect(self._arm_all_autobuy)
+        bulk_row.addWidget(btn_arm)
 
-        btn_ab_none = QPushButton("\U0001f6ab Disarm All")
-        btn_ab_none.setToolTip("Disable Auto-Buy toggle for every domain in the monitoring table")
-        btn_ab_none.setFixedHeight(24)
-        btn_ab_none.setStyleSheet("font-size:11px;padding:2px 8px;")
-        btn_ab_none.clicked.connect(self._disarm_all_autobuy)
-        sel_row.addWidget(btn_ab_none)
+        btn_disarm = QPushButton("\U0001f6ab Disarm All")
+        btn_disarm.setFixedHeight(24)
+        btn_disarm.setStyleSheet("font-size:11px;padding:2px 8px;")
+        btn_disarm.setToolTip("Disable the Auto-Buy column for every domain in the monitoring table")
+        btn_disarm.clicked.connect(self._disarm_all_autobuy)
+        bulk_row.addWidget(btn_disarm)
 
-        sel_row.addStretch()
-        layout.addLayout(sel_row)
-        # ───────────────────────────────────────────────────────────────────
+        bulk_row.addStretch()
+        layout.addLayout(bulk_row)
+        # ────────────────────────────────────────────────────────────────
 
+        # ── Global Auto-Buy toggle (BELOW bulk controls) ─────────────────
+        autobuy_row = QHBoxLayout()
+        autobuy_row.setSpacing(8)
+
+        self.auto_buy_chk = QCheckBox("\u26a0\ufe0f Enable Auto-Buy")
+        self.auto_buy_chk.setChecked(False)
+        self.auto_buy_chk.setToolTip(
+            "HIGH RISK \u2014 GLOBAL MASTER SWITCH.\n"
+            "When ON, domains whose \U0001f3af column is also checked\n"
+            "will be purchased automatically when they become available.\n"
+            "Both this AND the per-row \U0001f3af must be ON for any purchase to happen."
+        )
+        self.auto_buy_chk.setStyleSheet(
+            "QCheckBox { color:#fbbf24; font-weight:bold; font-size:12px; padding:4px 8px; }"
+            "QCheckBox::indicator { width:16px; height:16px; }"
+            "QCheckBox::indicator:unchecked { border:2px solid #475569; border-radius:3px; background:#1e293b; }"
+            "QCheckBox::indicator:checked   { border:2px solid #ef4444; border-radius:3px; background:#ef4444; }"
+        )
+        self.auto_buy_chk.toggled.connect(self._on_auto_buy_toggled)
+
+        self.auto_buy_warning_lbl = QLabel()
+        self.auto_buy_warning_lbl.setStyleSheet(
+            "color:#ef4444; font-weight:bold; font-size:11px; padding:2px 6px;"
+            "background:#450a0a; border:1px solid #7f1d1d; border-radius:4px;"
+        )
+        self.auto_buy_warning_lbl.setVisible(False)
+
+        autobuy_row.addWidget(self.auto_buy_chk)
+        autobuy_row.addWidget(self.auto_buy_warning_lbl)
+        autobuy_row.addStretch()
+        layout.addLayout(autobuy_row)
+        # ────────────────────────────────────────────────────────────────
+
+        # Monitoring Controls group box
         controls = QGroupBox("\U0001f4e1 Monitoring Controls")
         controls.setStyleSheet(
             "QGroupBox{color:#94a3b8;font-size:11px;border:1px solid #1e293b;border-radius:6px;margin-top:4px;padding:4px;}"
@@ -255,40 +294,8 @@ class UiBuildersMixin:
         bar.addStretch()
         layout.addWidget(controls)
 
-        # ── Auto-Buy global toggle row ──────────────────────────────────
-        autobuy_row = QHBoxLayout()
-        autobuy_row.setSpacing(8)
-
-        self.auto_buy_chk = QCheckBox("\u26a0\ufe0f Enable Auto-Buy")
-        self.auto_buy_chk.setChecked(False)
-        self.auto_buy_chk.setToolTip(
-            "HIGH RISK — GLOBAL MASTER SWITCH.\n"
-            "When ON, domains with their per-row \U0001f3af toggle also ON\n"
-            "will be purchased automatically when they become available.\n"
-            "Both this AND the per-row toggle must be ON for any purchase to happen."
-        )
-        self.auto_buy_chk.setStyleSheet(
-            "QCheckBox { color:#fbbf24; font-weight:bold; font-size:12px; padding:4px 8px; }"
-            "QCheckBox::indicator { width:16px; height:16px; }"
-            "QCheckBox::indicator:unchecked { border:2px solid #475569; border-radius:3px; background:#1e293b; }"
-            "QCheckBox::indicator:checked   { border:2px solid #ef4444; border-radius:3px; background:#ef4444; }"
-        )
-        self.auto_buy_chk.toggled.connect(self._on_auto_buy_toggled)
-
-        self.auto_buy_warning_lbl = QLabel()
-        self.auto_buy_warning_lbl.setStyleSheet(
-            "color:#ef4444; font-weight:bold; font-size:11px; padding:2px 6px;"
-            "background:#450a0a; border:1px solid #7f1d1d; border-radius:4px;"
-        )
-        self.auto_buy_warning_lbl.setVisible(False)
-
-        autobuy_row.addWidget(self.auto_buy_chk)
-        autobuy_row.addWidget(self.auto_buy_warning_lbl)
-        autobuy_row.addStretch()
-        layout.addLayout(autobuy_row)
-        # ───────────────────────────────────────────────────────────────────
-
-        self.monitor_table = QTableWidget(0, 9)
+        # Table
+        self.monitor_table = QTableWidget(0, 10)
         self._setup_domain_table(self.monitor_table, draggable=False)
         self.monitor_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.monitor_table.customContextMenuRequested.connect(
@@ -308,11 +315,11 @@ class UiBuildersMixin:
                 self,
                 "\u26a0\ufe0f HIGH RISK \u2014 Enable Auto-Buy?",
                 "<b style='color:#ef4444;font-size:14px;'>\u26a0\ufe0f WARNING: Auto-Buy is a HIGH RISK feature.</b><br><br>"
-                "When enabled, domains with the <b>\U0001f3af per-row toggle ON</b> will be "
+                "When enabled, domains with the <b>\U0001f3af column checked</b> will be "
                 "<b>purchased IMMEDIATELY and AUTOMATICALLY</b> when they become available.<br><br>"
                 "<b>Before enabling, make sure:</b>"
                 "<ul>"
-                "<li>You have only armed the \U0001f3af toggle on domains you <u>actually want to buy</u>.</li>"
+                "<li>You have only checked \U0001f3af on domains you <u>actually want to buy</u>.</li>"
                 "<li>You understand that registrations <u>cannot be undone or refunded</u>.</li>"
                 "</ul>"
                 "Do you want to enable Auto-Buy?",
@@ -330,26 +337,6 @@ class UiBuildersMixin:
         else:
             self.auto_buy_warning_lbl.setVisible(False)
             self.append_log("[AUTO-BUY] Global switch OFF \u2014 monitor will only check availability.")
-
-    def _arm_all_autobuy(self):
-        reg = self._get_autobuy_registry()
-        count = 0
-        for domain, chk in reg.items():
-            if domain in self.monitor_rows and not chk.isChecked():
-                chk.setChecked(True)
-                count += 1
-        self.append_log(f"[AUTO-BUY] Armed {count} domain(s).")
-        self.refresh_stats()
-
-    def _disarm_all_autobuy(self):
-        reg = self._get_autobuy_registry()
-        count = 0
-        for domain, chk in reg.items():
-            if chk.isChecked():
-                chk.setChecked(False)
-                count += 1
-        self.append_log(f"[AUTO-BUY] Disarmed {count} domain(s).")
-        self.refresh_stats()
 
     def _build_rampage_page(self):
         page = QWidget()
@@ -390,7 +377,7 @@ class UiBuildersMixin:
 
         layout.addLayout(input_row)
 
-        # ── Check All / Uncheck All for Rampage ──────────────────────────
+        # Check All / Uncheck All for Rampage
         rsel_row = QHBoxLayout()
         rsel_row.setSpacing(6)
         rlbl = QLabel("\u2713 Selection:")
@@ -413,8 +400,8 @@ class UiBuildersMixin:
 
         rsel_row.addStretch()
         layout.addLayout(rsel_row)
-        # ──────────────────────────────────────────────────────────────────
 
+        # Rampage Controls group box
         controls = QGroupBox("\u26a1 Rampage Controls")
         controls.setStyleSheet(
             "QGroupBox{color:#94a3b8;font-size:11px;border:1px solid #1e293b;border-radius:6px;margin-top:4px;padding:4px;}"
@@ -447,7 +434,7 @@ class UiBuildersMixin:
         bar.addStretch()
         layout.addWidget(controls)
 
-        self.rampage_table = DraggableTable(0, 9)
+        self.rampage_table = DraggableTable(0, 10)
         self._setup_domain_table(self.rampage_table, draggable=True)
         self.rampage_table.row_moved.connect(self._on_rampage_rows_reordered)
         self.rampage_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -463,19 +450,32 @@ class UiBuildersMixin:
         return page
 
     def _setup_domain_table(self, table, draggable=False):
-        table.setHorizontalHeaderLabels(["\u2195", "\u2713", "Domain", "Est. Drop Date", "Price", "WHOIS", "Status", "Next", "Actions"])
+        table.setHorizontalHeaderLabels([
+            "\u2195",       # COL_DRAG
+            "\u2713",       # COL_SNIPE  - selection
+            "\U0001f3af",   # COL_AUTOBUY - per-domain auto-buy
+            "Domain",       # COL_DOMAIN
+            "Est. Drop Date",
+            "Price",
+            "WHOIS",
+            "Status",
+            "Next",
+            "Actions",
+        ])
         hh = table.horizontalHeader()
-        hh.setSectionResizeMode(COL_DRAG,  QHeaderView.Fixed)
+        hh.setSectionResizeMode(COL_DRAG,    QHeaderView.Fixed)
         table.setColumnWidth(COL_DRAG, 28)
-        hh.setSectionResizeMode(COL_SNIPE, QHeaderView.Fixed)
+        hh.setSectionResizeMode(COL_SNIPE,   QHeaderView.Fixed)
         table.setColumnWidth(COL_SNIPE, 32)
-        hh.setSectionResizeMode(COL_DOMAIN, QHeaderView.Stretch)
-        hh.setSectionResizeMode(COL_DROP,   QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(COL_PRICE,  QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(COL_WHOIS,  QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(COL_STATUS, QHeaderView.Stretch)
-        hh.setSectionResizeMode(COL_NEXT,   QHeaderView.ResizeToContents)
-        hh.setSectionResizeMode(COL_ACT,    QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(COL_AUTOBUY, QHeaderView.Fixed)
+        table.setColumnWidth(COL_AUTOBUY, 32)
+        hh.setSectionResizeMode(COL_DOMAIN,  QHeaderView.Stretch)
+        hh.setSectionResizeMode(COL_DROP,    QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(COL_PRICE,   QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(COL_WHOIS,   QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(COL_STATUS,  QHeaderView.Stretch)
+        hh.setSectionResizeMode(COL_NEXT,    QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(COL_ACT,     QHeaderView.ResizeToContents)
 
         table.verticalHeader().setVisible(False)
         table.setAlternatingRowColors(True)
