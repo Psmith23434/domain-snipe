@@ -126,14 +126,6 @@ class UiBuildersMixin:
         """
         Build a collapsible QFrame containing three filter QComboBox widgets
         (TLD / Status / WHOIS) and a Reset button.
-
-        Assigns instance attributes:
-          monitor_filter_bar  / rampage_filter_bar   (QFrame, hidden by default)
-          monitor_filter_tld  / rampage_filter_tld   (QComboBox)
-          monitor_filter_status / rampage_filter_status
-          monitor_filter_whois  / rampage_filter_whois
-
-        Returns the QFrame so the caller can add it to its layout.
         """
         bar = QFrame()
         bar.setObjectName(f"{mode}_filter_bar")
@@ -188,28 +180,21 @@ class UiBuildersMixin:
         hl.addWidget(reset_btn)
         hl.addStretch()
 
-        # Store on self so mixin_tables can access
         setattr(self, f"{mode}_filter_tld",    tld_combo)
         setattr(self, f"{mode}_filter_status",  status_combo)
         setattr(self, f"{mode}_filter_whois",   whois_combo)
         setattr(self, f"{mode}_filter_bar",     bar)
 
-        # Wire combos -> apply filter
         for combo in (tld_combo, status_combo, whois_combo):
             combo.currentIndexChanged.connect(lambda _, m=mode: self._apply_combined_filter(m))
 
-        bar.setVisible(False)   # hidden until toggle button is clicked
+        bar.setVisible(False)
         return bar
 
     # ------------------------------------------------------------------
     #  Shared: With-checked bulk action row factory
     # ------------------------------------------------------------------
     def _build_bulk_action_row(self, mode):
-        """
-        Build the 'With checked...' QComboBox + Apply button row.
-        Assigns self.monitor_bulk_action / self.rampage_bulk_action.
-        Returns a QHBoxLayout.
-        """
         hl = QHBoxLayout()
         hl.setSpacing(6)
 
@@ -295,7 +280,6 @@ class UiBuildersMixin:
         search_row.addWidget(adv_toggle)
         layout.addLayout(search_row)
 
-        # Advanced filter bar (hidden by default)
         monitor_filter_bar = self._build_filter_bar("monitor")
         layout.addWidget(monitor_filter_bar)
 
@@ -311,11 +295,12 @@ class UiBuildersMixin:
         adv_toggle.toggled.connect(_toggle_monitor_filter_bar)
         # ────────────────────────────────────────────────────────────────
 
-        # Domain input + action buttons
+        # Domain input row — updated placeholder + paste filter installed
         input_row = QHBoxLayout()
-        self.input = QLineEdit(placeholderText="\u2795 Add a domain to monitoring (e.g. coolbrand.com) and press Enter")
+        self.input = QLineEdit(placeholderText="\u2795 Add domain(s) or paste clipboard (Ctrl+V for bulk)")
         self.input.returnPressed.connect(self.add_domain)
         input_row.addWidget(self.input)
+        self._install_paste_filter()   # Ctrl+V with multiple domains triggers bulk-add
 
         self.start_monitor_btn = QPushButton("\U0001f3af Start Monitoring")
         self.start_monitor_btn.clicked.connect(self.start_checked_monitoring)
@@ -333,10 +318,14 @@ class UiBuildersMixin:
         input_row.addWidget(self.stop_all_monitor_btn)
 
         for label, slot, tip in [
-            ("\u2795 Add",             self.add_domain,   "Add a single domain to monitoring"),
-            ("\U0001f4e5 Import .txt", self.import_txt,   "Load one domain per line from a .txt file"),
-            ("\U0001f50d WHOIS All",   self.bulk_whois,   "Run WHOIS on every monitored domain"),
-            ("\U0001f4e4 Export CSV",  self.export_csv,   "Save caught domains to CSV"),
+            ("\u2795 Add",                   self.add_domain,              "Add a single domain to monitoring"),
+            ("\U0001f4e5 Import .txt",        self.import_txt,              "Load one domain per line from a .txt file"),
+            ("\U0001f4cb Paste Domains",      self.paste_domains_from_clipboard,
+             "Paste domains from clipboard (newline / comma / space / semicolon separated)"),
+            ("\U0001f50d WHOIS All",          self.bulk_whois,              "Run WHOIS on every monitored domain"),
+            ("\U0001f4cb Copy WHOIS Results", self.copy_whois_results,
+             "Copy pendingDelete / Available / Taken / Redemption domains to clipboard (domain<TAB>status)"),
+            ("\U0001f4e4 Export CSV",         self.export_csv,              "Save caught domains to CSV"),
         ]:
             b = QPushButton(label)
             b.clicked.connect(slot)
@@ -390,9 +379,7 @@ class UiBuildersMixin:
         bulk_row.addStretch()
         layout.addLayout(bulk_row)
 
-        # ── With-checked bulk action toolbar ────────────────────────────
         layout.addLayout(self._build_bulk_action_row("monitor"))
-        # ────────────────────────────────────────────────────────────────
 
         # ── Global Auto-Buy toggle ───────────────────────────────────────
         autobuy_row = QHBoxLayout()
@@ -425,7 +412,6 @@ class UiBuildersMixin:
         autobuy_row.addWidget(self.auto_buy_warning_lbl)
         autobuy_row.addStretch()
         layout.addLayout(autobuy_row)
-        # ────────────────────────────────────────────────────────────────
 
         # Monitoring Controls group box
         controls = QGroupBox("\U0001f4e1 Monitoring Controls")
@@ -474,7 +460,6 @@ class UiBuildersMixin:
         bar.addStretch()
         layout.addWidget(controls)
 
-        # Table
         self.monitor_table = QTableWidget(0, 10)
         self._setup_domain_table(self.monitor_table, draggable=False)
         self.monitor_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -533,7 +518,6 @@ class UiBuildersMixin:
         info.setStyleSheet("color:#94a3b8;font-size:11px;padding:4px 2px;")
         layout.addWidget(info)
 
-        # ── Search bar + Advanced Filters toggle ────────────────────────
         search_row = QHBoxLayout()
         self.rampage_search = QLineEdit(placeholderText="\u26a1 Filter rampage queue...")
         self.rampage_search.textChanged.connect(lambda: self._apply_combined_filter("rampage"))
@@ -567,7 +551,6 @@ class UiBuildersMixin:
                 self._populate_filter_combos("rampage")
 
         radv_toggle.toggled.connect(_toggle_rampage_filter_bar)
-        # ────────────────────────────────────────────────────────────────
 
         input_row = QHBoxLayout()
         self.rampage_input = QLineEdit(placeholderText="\u26a1 Add a domain directly to the Rampage queue")
@@ -589,7 +572,6 @@ class UiBuildersMixin:
 
         layout.addLayout(input_row)
 
-        # ── Check All / Uncheck All ──────────────────────────────────────
         rsel_row = QHBoxLayout()
         rsel_row.setSpacing(6)
         rlbl = QLabel("\u2713 Selection:")
@@ -613,11 +595,8 @@ class UiBuildersMixin:
         rsel_row.addStretch()
         layout.addLayout(rsel_row)
 
-        # ── With-checked bulk action toolbar ────────────────────────────
         layout.addLayout(self._build_bulk_action_row("rampage"))
-        # ────────────────────────────────────────────────────────────────
 
-        # Rampage Controls group box
         controls = QGroupBox("\u26a1 Rampage Controls")
         controls.setStyleSheet(
             "QGroupBox{color:#94a3b8;font-size:11px;border:1px solid #1e293b;border-radius:6px;margin-top:4px;padding:4px;}"
@@ -670,9 +649,9 @@ class UiBuildersMixin:
     # ------------------------------------------------------------------
     def _setup_domain_table(self, table, draggable=False):
         headers = [
-            "\u2195",       # COL_DRAG
-            "\u2713",       # COL_SNIPE  - selection
-            "\U0001f3af",   # COL_AUTOBUY
+            "\u2195",
+            "\u2713",
+            "\U0001f3af",
             "Domain",
             "Est. Drop Date",
             "Price",

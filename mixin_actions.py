@@ -31,6 +31,48 @@ class ActionsMixin:
             lines = [normalize_domain(l) for l in f]
         self._bulk_add_monitor([d for d in lines if d])
 
+    def paste_domains_from_clipboard(self):
+        """Paste domains from clipboard (newline/comma/space/semicolon separated)."""
+        from PyQt5.QtWidgets import QApplication
+        raw = QApplication.clipboard().text()
+        tokens = re.split(r"[\s,;\n\r]+", raw.strip())
+        domains = [normalize_domain(t) for t in tokens if normalize_domain(t)]
+        if not domains:
+            self.append_log("Clipboard is empty or contains no valid domains.")
+            return
+        if len(domains) == 1:
+            self.input.setText(domains[0])
+            self.add_domain()
+        else:
+            self._bulk_add_monitor(domains)
+            self.append_log(f"\U0001f4cb Pasted {len(domains)} domain(s) from clipboard.")
+
+    def _install_paste_filter(self):
+        """Intercept Ctrl+V on the input field to trigger bulk-paste when clipboard has multiple domains."""
+        import re as _re
+        from PyQt5.QtCore import QObject, QEvent
+        from PyQt5.QtWidgets import QApplication
+        from PyQt5.QtGui import QKeySequence
+
+        parent = self
+
+        class _PasteFilter(QObject):
+            def eventFilter(self_, obj, event):
+                if (
+                    event.type() == QEvent.KeyPress
+                    and event.matches(QKeySequence.Paste)
+                ):
+                    raw = QApplication.clipboard().text()
+                    tokens = _re.split(r"[\s,;\n\r]+", raw.strip())
+                    valid = [normalize_domain(t) for t in tokens if normalize_domain(t)]
+                    if len(valid) > 1:
+                        parent.paste_domains_from_clipboard()
+                        return True  # swallow — bulk-add handled
+                return False
+
+        self._paste_filter = _PasteFilter(self)
+        self.input.installEventFilter(self._paste_filter)
+
     def _ai_add_all(self):
         tokens = re.split(r"[\s,;]+", self.ai_input.toPlainText())
         self._bulk_add_monitor([normalize_domain(t) for t in tokens if normalize_domain(t)])
