@@ -42,6 +42,15 @@ HEADERS = dict(_session.headers)
 
 
 # ---------------------------------------------------------------------------
+# Registration payload — fixed intent: always 1 year, never auto-renew.
+# Changing these values requires an explicit code change, not an accidental
+# kwarg, so the behaviour stays auditable and predictable.
+# ---------------------------------------------------------------------------
+_REGISTRATION_YEARS      = 1      # register for exactly one year
+_REGISTRATION_AUTO_RENEW = False   # never auto-renew; user decides manually
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -101,12 +110,14 @@ def register_domain(domain: str) -> dict:
     """
     POST /v1/domains/{domain}
 
+    Always registers for 1 year with no auto-renewal (see module constants
+    _REGISTRATION_YEARS and _REGISTRATION_AUTO_RENEW above).
     Rate limit: 30/user/30 s, no per-domain cap.
     Returns a normalised status dict for the Rampage queue.
     """
     payload = {
-        "autoRenew": False,
-        "years": 1,
+        "autoRenew": _REGISTRATION_AUTO_RENEW,  # False — user renews manually
+        "years":     _REGISTRATION_YEARS,        # 1 year only
         "privacyProtection": {
             "level":       "high",
             "userConsent": True,

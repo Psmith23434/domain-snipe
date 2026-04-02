@@ -2,10 +2,7 @@
 import time
 import threading
 
-try:
-    from api import check_domain as _check_domain, register_domain as _register_domain, poll_operation as _poll_operation
-except ImportError:
-    from api import checkdomain as _check_domain, registerdomain as _register_domain, polloperation as _poll_operation
+from api import check_domain as _check_domain, register_domain as _register_domain, poll_operation as _poll_operation
 
 
 POLL_MODES = {
@@ -16,8 +13,6 @@ POLL_MODES = {
     "Rampage (1s)":           1,
     "Custom":                 0,
 }
-
-POLLMODES = POLL_MODES
 
 # ---------------------------------------------------------------------------
 # Async-operation polling constants
@@ -370,20 +365,13 @@ def snipe_domain(
     row_index=999,
     stop_event=None,
     auto_buy=False,
-    **legacy_kwargs,
 ):
-    # Legacy camelCase kwarg resolution — kept intact until main.py is updated
-    on_status     = on_status     or legacy_kwargs.get("onstatus")     or _noop
-    on_success    = on_success    or legacy_kwargs.get("onsuccess")    or _noop
-    on_failure    = on_failure    or legacy_kwargs.get("onfailure")    or _noop
-    on_premium    = on_premium    or legacy_kwargs.get("onpremium")    or _noop
-    on_next_check = on_next_check or legacy_kwargs.get("onnextcheck")  or _noop
-
-    poll_interval = legacy_kwargs.get("pollinterval", poll_interval)
-    rampage       = legacy_kwargs.get("rampage",      rampage)
-    row_index     = legacy_kwargs.get("rowindex",     row_index)
-    stop_event    = stop_event    or legacy_kwargs.get("stopevent")    or threading.Event()
-    auto_buy      = legacy_kwargs.get("autobuy",      auto_buy)
+    on_status     = on_status     or _noop
+    on_success    = on_success    or _noop
+    on_failure    = on_failure    or _noop
+    on_premium    = on_premium    or _noop
+    on_next_check = on_next_check or _noop
+    stop_event    = stop_event    or threading.Event()
 
     if rampage:
         on_status(domain, "Rampage queued...")
@@ -488,56 +476,12 @@ def snipe_domain(
     return stop_event
 
 
-# ---------------------------------------------------------------------------
-# Backward-compatible aliases (all preserved)
-# ---------------------------------------------------------------------------
-
-def setpriorityenabled(enabled: bool):
-    set_priority_enabled(enabled)
-
-
-def updatedomainrow(domain: str, rowindex: int):
-    update_domain_row(domain, rowindex)
-
-
-def snipedomain(
-    domain,
-    onstatus=None,
-    onsuccess=None,
-    onfailure=None,
-    onpremium=None,
-    onnextcheck=None,
-    pollinterval=60,
-    rampage=False,
-    rowindex=999,
-    stopevent=None,
-    autobuy=False,
-):
-    return snipe_domain(
-        domain=domain,
-        on_status=onstatus,
-        on_success=onsuccess,
-        on_failure=onfailure,
-        on_premium=onpremium,
-        on_next_check=onnextcheck,
-        poll_interval=pollinterval,
-        rampage=rampage,
-        row_index=rowindex,
-        stop_event=stopevent,
-        auto_buy=autobuy,
-    )
-
-
 __all__ = [
     "POLL_MODES",
-    "POLLMODES",
     "ASYNC_POLL_INTERVAL",
     "ASYNC_POLL_MAX_ATTEMPTS",
     "poll_until_done",
     "set_priority_enabled",
-    "setpriorityenabled",
     "update_domain_row",
-    "updatedomainrow",
     "snipe_domain",
-    "snipedomain",
 ]

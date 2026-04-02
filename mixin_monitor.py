@@ -4,6 +4,7 @@ import re
 # for DropCatcher.
 import time
 import threading
+from collections import deque
 from datetime import timezone
 
 from api import check_domain, register_domain
@@ -388,11 +389,12 @@ class MonitorMixin:
             )
 
     def _whois_worker_loop(self):
+        # whois_queue is a collections.deque — popleft() is O(1) vs O(n) for list.pop(0)
         while not self.whois_worker_stop.is_set():
             job = None
             with self.whois_queue_lock:
                 if self.whois_queue:
-                    job = self.whois_queue.pop(0)
+                    job = self.whois_queue.popleft()
 
             if not job:
                 self.whois_worker_wake.wait(0.5)
