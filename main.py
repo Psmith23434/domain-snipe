@@ -4,6 +4,7 @@ import csv
 import time
 import threading
 import webbrowser
+from collections import deque
 from datetime import datetime, timezone
 
 from PyQt5.QtWidgets import (
@@ -79,7 +80,7 @@ class DropCatcher(
         self.monitor_last_request_ts = 0.0
 
         self.whois_queue_lock = threading.Lock()
-        self.whois_queue = []
+        self.whois_queue = deque()  # deque: O(1) popleft() in the WHOIS worker thread
         self.whois_pending = set()
         self.whois_worker_wake = threading.Event()
         self.whois_worker_stop = threading.Event()
