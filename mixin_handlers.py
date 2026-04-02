@@ -12,6 +12,7 @@ from datetime import datetime
 
 from PyQt5.QtWidgets import (
     QApplication, QSystemTrayIcon, QMenu, QMessageBox, QFileDialog, QTableWidgetItem,
+    QStyle,
 )
 from PyQt5.QtCore import Qt, QTime
 from PyQt5.QtGui import QColor
@@ -55,6 +56,10 @@ class HandlersMixin:
 
     def _setup_tray(self):
         self.tray = QSystemTrayIcon(self)
+        # Bug fix: setIcon() was never called — tray showed as a blank square.
+        # Using SP_ComputerIcon as a cross-platform fallback.
+        # Replace with QIcon("logo.ico") once an icon file is added to the repo.
+        self.tray.setIcon(QApplication.style().standardIcon(QStyle.SP_ComputerIcon))
         self.tray.setVisible(True)
         m = QMenu()
         m.addAction("Open", self.show)
@@ -78,9 +83,13 @@ class HandlersMixin:
     def _load_rampage_queue(self):
         from persistence import load_rampage_queue as _load_rq
         return _load_rq()
+
     def _save_rampage_queue(self):
-        from persistence import saverampagequeue as _save_rq
+        # Bug fix: was 'saverampagequeue' (no underscores) — ImportError silently
+        # prevented the rampage queue from ever being saved to disk.
+        from persistence import save_rampage_queue as _save_rq
         _save_rq(list(self.rampage_rows.keys()))
+
     def _get_poll_interval(self):
         mode = self.poll_mode.currentText()
         if mode == "Custom":
