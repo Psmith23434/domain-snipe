@@ -119,18 +119,197 @@ class UiBuildersMixin:
         sl.addWidget(self.log)
         return w
 
+    # ------------------------------------------------------------------
+    #  Shared: advanced-filter bar factory
+    # ------------------------------------------------------------------
+    def _build_filter_bar(self, mode):
+        """
+        Build a collapsible QFrame containing three filter QComboBox widgets
+        (TLD / Status / WHOIS) and a Reset button.
+
+        Assigns instance attributes:
+          monitor_filter_bar  / rampage_filter_bar   (QFrame, hidden by default)
+          monitor_filter_tld  / rampage_filter_tld   (QComboBox)
+          monitor_filter_status / rampage_filter_status
+          monitor_filter_whois  / rampage_filter_whois
+
+        Returns the QFrame so the caller can add it to its layout.
+        """
+        bar = QFrame()
+        bar.setObjectName(f"{mode}_filter_bar")
+        bar.setStyleSheet(
+            "QFrame { background:#111827; border:1px solid #1e3a5f;"
+            " border-radius:5px; padding:2px 4px; }"
+        )
+        hl = QHBoxLayout(bar)
+        hl.setContentsMargins(6, 3, 6, 3)
+        hl.setSpacing(6)
+
+        combo_style = (
+            "QComboBox { background:#1e293b; color:#e2e8f0; padding:2px 6px;"
+            " border:1px solid #334155; border-radius:4px; font-size:11px; }"
+            "QComboBox::drop-down { border:none; width:16px; }"
+        )
+
+        tld_combo = QComboBox()
+        tld_combo.setToolTip("Filter by TLD (populated from current rows)")
+        tld_combo.setStyleSheet(combo_style)
+        tld_combo.setMinimumWidth(90)
+        tld_combo.addItem("Any TLD")
+
+        status_combo = QComboBox()
+        status_combo.setToolTip("Filter by Status column")
+        status_combo.setStyleSheet(combo_style)
+        status_combo.setMinimumWidth(120)
+        status_combo.addItem("Any Status")
+
+        whois_combo = QComboBox()
+        whois_combo.setToolTip("Filter by WHOIS result")
+        whois_combo.setStyleSheet(combo_style)
+        whois_combo.setMinimumWidth(120)
+        whois_combo.addItem("Any WHOIS")
+
+        reset_btn = QPushButton("\u21ba Reset")
+        reset_btn.setFixedHeight(24)
+        reset_btn.setStyleSheet("font-size:11px;padding:2px 8px;color:#94a3b8;")
+        reset_btn.setToolTip("Clear all active filters and search text")
+        reset_btn.clicked.connect(lambda: self._reset_filters(mode))
+
+        for lbl, widget in [
+            ("TLD:",    tld_combo),
+            ("Status:", status_combo),
+            ("WHOIS:",  whois_combo),
+        ]:
+            l = QLabel(lbl)
+            l.setStyleSheet("color:#64748b;font-size:11px;")
+            hl.addWidget(l)
+            hl.addWidget(widget)
+
+        hl.addWidget(reset_btn)
+        hl.addStretch()
+
+        # Store on self so mixin_tables can access
+        setattr(self, f"{mode}_filter_tld",    tld_combo)
+        setattr(self, f"{mode}_filter_status",  status_combo)
+        setattr(self, f"{mode}_filter_whois",   whois_combo)
+        setattr(self, f"{mode}_filter_bar",     bar)
+
+        # Wire combos -> apply filter
+        for combo in (tld_combo, status_combo, whois_combo):
+            combo.currentIndexChanged.connect(lambda _, m=mode: self._apply_combined_filter(m))
+
+        bar.setVisible(False)   # hidden until toggle button is clicked
+        return bar
+
+    # ------------------------------------------------------------------
+    #  Shared: With-checked bulk action row factory
+    # ------------------------------------------------------------------
+    def _build_bulk_action_row(self, mode):
+        """
+        Build the 'With checked...' QComboBox + Apply button row.
+        Assigns self.monitor_bulk_action / self.rampage_bulk_action.
+        Returns a QHBoxLayout.
+        """
+        hl = QHBoxLayout()
+        hl.setSpacing(6)
+
+        lbl = QLabel("With checked:")
+        lbl.setStyleSheet("color:#64748b;font-size:11px;")
+        hl.addWidget(lbl)
+
+        combo = QComboBox()
+        combo.setToolTip("Choose a bulk action to apply to all checked rows")
+        combo.setStyleSheet(
+            "QComboBox { background:#1e293b; color:#e2e8f0; padding:2px 8px;"
+            " border:1px solid #334155; border-radius:4px; font-size:11px; }"
+            "QComboBox::drop-down { border:none; width:16px; }"
+        )
+        combo.setMinimumWidth(160)
+
+        if mode == "monitor":
+            combo.addItems([
+                "\u2014 With checked\u2026 \u2014",
+                "Remove",
+                "Start monitoring",
+                "Stop monitoring",
+                "Move to Rampage",
+                "Run WHOIS",
+                "Arm Auto-Buy",
+                "Disarm Auto-Buy",
+            ])
+            setattr(self, "monitor_bulk_action", combo)
+            slot = self._apply_monitor_bulk_action
+        else:
+            combo.addItems([
+                "\u2014 With checked\u2026 \u2014",
+                "Remove",
+                "Start Rampage",
+                "Stop Rampage",
+                "Run WHOIS",
+            ])
+            setattr(self, "rampage_bulk_action", combo)
+            slot = self._apply_rampage_bulk_action
+
+        apply_btn = QPushButton("\u25b6 Apply")
+        apply_btn.setFixedHeight(24)
+        apply_btn.setStyleSheet(
+            "QPushButton { font-size:11px; padding:2px 10px;"
+            " background:#312e81; color:#e2e8f0; border-radius:4px;"
+            " border:1px solid #4338ca; }"
+            "QPushButton:hover { background:#3730a3; }"
+        )
+        apply_btn.setToolTip("Apply the selected action to all checked rows")
+        apply_btn.clicked.connect(slot)
+
+        hl.addWidget(combo)
+        hl.addWidget(apply_btn)
+        hl.addStretch()
+        return hl
+
+    # ------------------------------------------------------------------
+    #  Monitoring page
+    # ------------------------------------------------------------------
     def _build_monitoring_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setSpacing(6)
 
-        # Filter bar
+        # ── Search bar + Advanced Filters toggle ────────────────────────
         search_row = QHBoxLayout()
         self.monitor_search = QLineEdit(placeholderText="\U0001f50e Filter monitored domains...")
-        self.monitor_search.textChanged.connect(self._filter_monitor_table)
+        self.monitor_search.textChanged.connect(lambda: self._apply_combined_filter("monitor"))
         self.monitor_search.setStyleSheet("padding:6px 10px;border-radius:5px;")
         search_row.addWidget(self.monitor_search)
+
+        adv_toggle = QPushButton("\U0001f50d Advanced Filters \u25bc")
+        adv_toggle.setCheckable(True)
+        adv_toggle.setFixedHeight(30)
+        adv_toggle.setStyleSheet(
+            "QPushButton { font-size:11px; padding:2px 10px;"
+            " background:#172033; color:#94a3b8;"
+            " border:1px solid #1e293b; border-radius:4px; }"
+            "QPushButton:checked { background:#1e3a5f; color:#93c5fd;"
+            " border:1px solid #1e3a5f; }"
+        )
+        adv_toggle.setToolTip("Show / hide TLD, Status and WHOIS filter combos")
+        search_row.addWidget(adv_toggle)
         layout.addLayout(search_row)
+
+        # Advanced filter bar (hidden by default)
+        monitor_filter_bar = self._build_filter_bar("monitor")
+        layout.addWidget(monitor_filter_bar)
+
+        def _toggle_monitor_filter_bar(checked):
+            monitor_filter_bar.setVisible(checked)
+            adv_toggle.setText(
+                "\U0001f50d Advanced Filters \u25b2" if checked
+                else "\U0001f50d Advanced Filters \u25bc"
+            )
+            if checked:
+                self._populate_filter_combos("monitor")
+
+        adv_toggle.toggled.connect(_toggle_monitor_filter_bar)
+        # ────────────────────────────────────────────────────────────────
 
         # Domain input + action buttons
         input_row = QHBoxLayout()
@@ -166,11 +345,10 @@ class UiBuildersMixin:
 
         layout.addLayout(input_row)
 
-        # ── Selection + Auto-Buy bulk controls (ABOVE global toggle) ─────
+        # ── Selection + Auto-Buy bulk controls ──────────────────────────
         bulk_row = QHBoxLayout()
         bulk_row.setSpacing(6)
 
-        # Selection group
         lbl_sel = QLabel("\u2713 Selection:")
         lbl_sel.setStyleSheet("color:#64748b;font-size:11px;")
         bulk_row.addWidget(lbl_sel)
@@ -191,7 +369,6 @@ class UiBuildersMixin:
 
         bulk_row.addWidget(_divider())
 
-        # Auto-Buy arm group
         lbl_ab = QLabel("\U0001f3af Auto-Buy:")
         lbl_ab.setStyleSheet("color:#fbbf24;font-size:11px;font-weight:bold;")
         bulk_row.addWidget(lbl_ab)
@@ -212,9 +389,12 @@ class UiBuildersMixin:
 
         bulk_row.addStretch()
         layout.addLayout(bulk_row)
+
+        # ── With-checked bulk action toolbar ────────────────────────────
+        layout.addLayout(self._build_bulk_action_row("monitor"))
         # ────────────────────────────────────────────────────────────────
 
-        # ── Global Auto-Buy toggle (BELOW bulk controls) ─────────────────
+        # ── Global Auto-Buy toggle ───────────────────────────────────────
         autobuy_row = QHBoxLayout()
         autobuy_row.setSpacing(8)
 
@@ -338,6 +518,9 @@ class UiBuildersMixin:
             self.auto_buy_warning_lbl.setVisible(False)
             self.append_log("[AUTO-BUY] Global switch OFF \u2014 monitor will only check availability.")
 
+    # ------------------------------------------------------------------
+    #  Rampage page
+    # ------------------------------------------------------------------
     def _build_rampage_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -350,12 +533,41 @@ class UiBuildersMixin:
         info.setStyleSheet("color:#94a3b8;font-size:11px;padding:4px 2px;")
         layout.addWidget(info)
 
+        # ── Search bar + Advanced Filters toggle ────────────────────────
         search_row = QHBoxLayout()
         self.rampage_search = QLineEdit(placeholderText="\u26a1 Filter rampage queue...")
-        self.rampage_search.textChanged.connect(self._filter_rampage_table)
+        self.rampage_search.textChanged.connect(lambda: self._apply_combined_filter("rampage"))
         self.rampage_search.setStyleSheet("padding:6px 10px;border-radius:5px;")
         search_row.addWidget(self.rampage_search)
+
+        radv_toggle = QPushButton("\U0001f50d Advanced Filters \u25bc")
+        radv_toggle.setCheckable(True)
+        radv_toggle.setFixedHeight(30)
+        radv_toggle.setStyleSheet(
+            "QPushButton { font-size:11px; padding:2px 10px;"
+            " background:#172033; color:#94a3b8;"
+            " border:1px solid #1e293b; border-radius:4px; }"
+            "QPushButton:checked { background:#1e3a5f; color:#93c5fd;"
+            " border:1px solid #1e3a5f; }"
+        )
+        radv_toggle.setToolTip("Show / hide TLD, Status and WHOIS filter combos")
+        search_row.addWidget(radv_toggle)
         layout.addLayout(search_row)
+
+        rampage_filter_bar = self._build_filter_bar("rampage")
+        layout.addWidget(rampage_filter_bar)
+
+        def _toggle_rampage_filter_bar(checked):
+            rampage_filter_bar.setVisible(checked)
+            radv_toggle.setText(
+                "\U0001f50d Advanced Filters \u25b2" if checked
+                else "\U0001f50d Advanced Filters \u25bc"
+            )
+            if checked:
+                self._populate_filter_combos("rampage")
+
+        radv_toggle.toggled.connect(_toggle_rampage_filter_bar)
+        # ────────────────────────────────────────────────────────────────
 
         input_row = QHBoxLayout()
         self.rampage_input = QLineEdit(placeholderText="\u26a1 Add a domain directly to the Rampage queue")
@@ -377,7 +589,7 @@ class UiBuildersMixin:
 
         layout.addLayout(input_row)
 
-        # Check All / Uncheck All for Rampage
+        # ── Check All / Uncheck All ──────────────────────────────────────
         rsel_row = QHBoxLayout()
         rsel_row.setSpacing(6)
         rlbl = QLabel("\u2713 Selection:")
@@ -400,6 +612,10 @@ class UiBuildersMixin:
 
         rsel_row.addStretch()
         layout.addLayout(rsel_row)
+
+        # ── With-checked bulk action toolbar ────────────────────────────
+        layout.addLayout(self._build_bulk_action_row("rampage"))
+        # ────────────────────────────────────────────────────────────────
 
         # Rampage Controls group box
         controls = QGroupBox("\u26a1 Rampage Controls")
@@ -449,20 +665,41 @@ class UiBuildersMixin:
 
         return page
 
+    # ------------------------------------------------------------------
+    #  Table setup
+    # ------------------------------------------------------------------
     def _setup_domain_table(self, table, draggable=False):
-        table.setHorizontalHeaderLabels([
+        headers = [
             "\u2195",       # COL_DRAG
             "\u2713",       # COL_SNIPE  - selection
-            "\U0001f3af",   # COL_AUTOBUY - per-domain auto-buy
-            "Domain",       # COL_DOMAIN
+            "\U0001f3af",   # COL_AUTOBUY
+            "Domain",
             "Est. Drop Date",
             "Price",
             "WHOIS",
             "Status",
             "Next",
             "Actions",
-        ])
+        ]
+        tooltips = [
+            "Drag handle \u2014 reorder rows (Rampage only)",
+            "Snipe checkbox \u2014 check to include this domain in bulk actions",
+            "Per-domain Auto-Buy \u2014 must be ON here AND globally to auto-register",
+            "Domain name",
+            "Estimated expiry / drop date from WHOIS",
+            "Standard registration price for this TLD",
+            "Last WHOIS status (run W button to refresh)",
+            "Current monitoring / snipe status",
+            "Time until next scheduled check",
+            "Row actions: WHOIS, Premium check, Start, Stop, Move, Remove",
+        ]
+        table.setHorizontalHeaderLabels(headers)
         hh = table.horizontalHeader()
+        for col, tip in enumerate(tooltips):
+            header_item = table.horizontalHeaderItem(col)
+            if header_item:
+                header_item.setToolTip(tip)
+
         hh.setSectionResizeMode(COL_DRAG,    QHeaderView.Fixed)
         table.setColumnWidth(COL_DRAG, 28)
         hh.setSectionResizeMode(COL_SNIPE,   QHeaderView.Fixed)
@@ -488,6 +725,9 @@ class UiBuildersMixin:
             table.setAcceptDrops(False)
             table.setDragDropMode(QAbstractItemView.NoDragDrop)
 
+    # ------------------------------------------------------------------
+    #  Remaining tab builders (unchanged)
+    # ------------------------------------------------------------------
     def _build_whois_tab(self):
         w = QWidget()
         wl = QVBoxLayout(w)
