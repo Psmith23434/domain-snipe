@@ -166,7 +166,9 @@ class UiTablesMixin:
         if row is None:
             return
 
-        self.stop_domain(domain, mode)
+        # silent=True: suppresses the redundant "Stopped X" log line;
+        # the caller (_remove_from_table) emits its own "Removed" line below.
+        self.stop_domain(domain, mode, silent=True)
         table.removeRow(row)
         nextmap.pop(domain, None)
         self._rebuild_rows(table, rowmap, mode)
@@ -241,14 +243,128 @@ class UiTablesMixin:
         self.refresh_stats()
 
     # ------------------------------------------------------------------ #
-    #  Filters                                                            #
+    #  Composable inline filter                                           #
     # ------------------------------------------------------------------ #
+
+    def _populate_filter_combos(self, mode="monitor"):
+        """
+        Refresh TLD / Status / WHOIS combos from the current table rows.
+        Called once when the filter bar is expanded so the options always
+        reflect what is actually loaded.
+        """
+        if mode == "monitor":
+            table = self.monitor_table
+            tld_combo    = self.monitor_filter_tld
+            status_combo = self.monitor_filter_status
+            whois_combo  = self.monitor_filter_whois
+        else:
+            table = self.rampage_table
+            tld_combo    = self.rampage_filter_tld
+            status_combo = self.rampage_filter_status
+            whois_combo  = self.rampage_filter_whois
+
+        tlds, statuses, whoises = set(), set(), set()
+        for row in range(table.rowCount()):
+            d_item = table.item(row, COL_DOMAIN)
+            s_item = table.item(row, COL_STATUS)
+            w_item = table.item(row, COL_WHOIS)
+            if d_item:
+                tld = "." + d_item.text().rsplit(".", 1)[-1] if "." in d_item.text() else ""
+                if tld:
+                    tlds.add(tld)
+            if s_item and s_item.text().strip() not in ("", "-"):
+                statuses.add(s_item.text().strip())
+            if w_item and w_item.text().strip() not in ("", "-"):
+                whoises.add(w_item.text().strip())
+
+        for combo, values, placeholder in [
+            (tld_combo,    sorted(tlds),    "Any TLD"),
+            (status_combo, sorted(statuses), "Any Status"),
+            (whois_combo,  sorted(whoises),  "Any WHOIS"),
+        ]:
+            current = combo.currentText()
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem(placeholder)
+            combo.addItems(values)
+            idx = combo.findText(current)
+            combo.setCurrentIndex(max(0, idx))
+            combo.blockSignals(False)
+
+    def _apply_combined_filter(self, mode="monitor"):
+        """
+        Compose search text + TLD + Status + WHOIS filters and hide rows
+        that don't match ALL active criteria.
+        """
+        if mode == "monitor":
+            table        = self.monitor_table
+            search_text  = getattr(self, "monitor_search", None)
+            tld_combo    = self.monitor_filter_tld
+            status_combo = self.monitor_filter_status
+            whois_combo  = self.monitor_filter_whois
+        else:
+            table        = self.rampage_table
+            search_text  = getattr(self, "rampage_search", None)
+            tld_combo    = self.rampage_filter_tld
+            status_combo = self.rampage_filter_status
+            whois_combo  = self.rampage_filter_whois
+
+        text   = (search_text.text() if search_text else "").lower().strip()
+        tld    = tld_combo.currentText()
+        status = status_combo.currentText()
+        whois  = whois_combo.currentText()
+
+        tld_active    = bool(tld)    and not tld.startswith("Any")
+        status_active = bool(status) and not status.startswith("Any")
+        whois_active  = bool(whois)  and not whois.startswith("Any")
+
+        for row in range(table.rowCount()):
+            d_item = table.item(row, COL_DOMAIN)
+            s_item = table.item(row, COL_STATUS)
+            w_item = table.item(row, COL_WHOIS)
+
+            domain_text  = d_item.text().lower() if d_item else ""
+            status_text  = s_item.text().strip()  if s_item else ""
+            whois_text   = w_item.text().strip()   if w_item else ""
+
+            hide = False
+            if text         and text not in domain_text:               hide = True
+            if tld_active   and not domain_text.endswith(tld.lower()): hide = True
+            if status_active and status_text != status:                hide = True
+            if whois_active  and whois_text  != whois:                 hide = True
+
+            table.setRowHidden(row, hide)
+
+    def _reset_filters(self, mode="monitor"):
+        if mode == "monitor":
+            search   = getattr(self, "monitor_search", None)
+            combos   = [self.monitor_filter_tld, self.monitor_filter_status, self.monitor_filter_whois]
+        else:
+            search   = getattr(self, "rampage_search", None)
+            combos   = [self.rampage_filter_tld, self.rampage_filter_status, self.rampage_filter_whois]
+
+        if search:
+            search.blockSignals(True)
+            search.clear()
+            search.blockSignals(False)
+
+        for combo in combos:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(0)
+            combo.blockSignals(False)
+
+        self._apply_combined_filter(mode)
+
+    # Legacy shims so old call-sites still work without changes
     def _filter_monitor_table(self, text):
-        self._filter_table(self.monitor_table, COL_DOMAIN, text)
+        self._apply_combined_filter("monitor")
 
     def _filter_rampage_table(self, text):
-        self._filter_table(self.rampage_table, COL_DOMAIN, text)
+        self._apply_combined_filter("rampage")
 
+    # ------------------------------------------------------------------ #
+    #  Low-level helpers shared by other mixins                           #
+    # ------------------------------------------------------------------ #
     def _filter_table(self, table, domain_col, text):
         text = (text or "").lower().strip()
         for row in range(table.rowCount()):
