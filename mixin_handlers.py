@@ -24,9 +24,6 @@ from constants import (
 from utils import (
     normalize_domain,
     get_tld_price,
-    estimate_drop_date,
-    _extract_expiry_from_raw_whois,
-    _first_datetime,
     _norm_status,
 )
 from persistence import load_settings, save_settings, save_watchlist, save_rampage_queue
@@ -82,7 +79,7 @@ class HandlersMixin:
             if self._sched_armed_for_minute != minute_key:
                 self._sched_armed_for_minute = minute_key
                 self.start_rampage_all()
-                self.append_log("⏰ Scheduled Rampage triggered.")
+                self.append_log("\u23f0 Scheduled Rampage triggered.")
         else:
             self._sched_armed_for_minute = None
 
@@ -209,7 +206,7 @@ class HandlersMixin:
         def _run():
             try:
                 info = check_domain(domain) or {}
-                result   = str(info.get("result", "")).lower()
+                result    = str(info.get("result", "")).lower()
                 available = result == "available"
                 price_cents = 0
                 if available and info.get("is_premium"):
@@ -227,13 +224,28 @@ class HandlersMixin:
         threading.Thread(target=_run, daemon=True).start()
 
     # ------------------------------------------------------------------
-    #  WHOIS result display  (called from signals thread → GUI thread)
+    #  WHOIS result display
+    #
+    #  signals.whois_result is emitted by _fetch_whois() as:
+    #    emit("domain|mode|drop_est|status_norm", raw_whois_text)
+    #
+    #  So the first argument received here is that pipe-delimited key,
+    #  NOT raw WHOIS text.  Parse it, then build the display label.
     # ------------------------------------------------------------------
 
-    def _show_whois_result(self, domain, raw_whois):
-        """Parse a raw WHOIS string and update the monitoring/rampage row."""
-        status_norm = _norm_status(raw_whois)
-        drop_est    = estimate_drop_date(raw_whois) or ""
+    def _show_whois_result(self, key, raw_whois):
+        """Slot for signals.whois_result.
+
+        Parameters
+        ----------
+        key       : "domain|mode|drop_est|status_norm"  (pipe-delimited)
+        raw_whois : full raw WHOIS text (shown in detail view)
+        """
+        parts = key.split("|", 3)
+        if len(parts) < 4:
+            return  # malformed signal — ignore
+        domain, _mode, drop_est, status_norm = parts
+        drop_est = drop_est or "-"
 
         # ── Determine display label + colour ──────────────────────────
         if "pendingdelete" in status_norm:
@@ -243,13 +255,12 @@ class HandlersMixin:
             short, color = "Redemption", QColor("#f59e0b")
 
         elif "active" in status_norm or status_norm == "ok":
-            # Check if it's a recently re-registered domain (~1-2 yr expiry = just bought after drop)
-            if drop_est and drop_est.startswith("- (active, exp "):
+            # Detect recently re-registered (expiry ≤ 2 yr away = just bought after a drop)
+            if drop_est.startswith("- (active, exp "):
                 m = re.search(r"exp (\d{2})\.(\d{2})\.(\d{4})", drop_est)
                 if m:
-                    from datetime import datetime, timezone
                     exp_year = int(m.group(3))
-                    now_year = datetime.now(timezone.utc).year
+                    now_year = datetime.now().year
                     if exp_year - now_year <= 2:
                         short, color = f"Taken ({m.group(3)})", QColor("#94a3b8")
                     else:
@@ -259,8 +270,11 @@ class HandlersMixin:
             else:
                 short, color = "Active", QColor("#94a3b8")
 
-        elif status_norm in ("", "nodataavailable", "noobjectfound", "free", "notfound", "available", "nomatches", "nomatch"):
-            # KEY FIX: empty / 'no match' WHOIS response = domain has dropped and is available to register
+        elif status_norm in (
+            "", "nodataavailable", "noobjectfound", "free",
+            "notfound", "available", "nomatches", "nomatch",
+        ):
+            # Empty / no-match WHOIS = domain has dropped → available to register
             short, color = "Available \u2705", QColor("#4ade80")
             drop_est = "Available now"
 
@@ -271,7 +285,7 @@ class HandlersMixin:
             short, color = status_norm[:18], QColor("#94a3b8")
 
         # ── Write to table cells ──────────────────────────────────────
-        def _set_item_if_present(table, rowmap, col, text, fg=None):
+        def _put(table, rowmap, col, text, fg=None):
             row = rowmap.get(domain)
             if row is None:
                 return
@@ -287,8 +301,8 @@ class HandlersMixin:
             (self.monitor_table, self.monitor_rows),
             (self.rampage_table, self.rampage_rows),
         ]:
-            _set_item_if_present(tbl, rmap, COL_WHOIS, short, color)
-            _set_item_if_present(tbl, rmap, COL_DROP,  drop_est)
+            _put(tbl, rmap, COL_WHOIS, short, color)
+            _put(tbl, rmap, COL_DROP,  drop_est)
 
     # ------------------------------------------------------------------
     #  Copy WHOIS results to clipboard
@@ -299,9 +313,11 @@ class HandlersMixin:
         to clipboard as domain<TAB>status lines — one per row."""
         lines = []
         for domain, row in self.monitor_rows.items():
-            whois_item = self.monitor_table.item(row, COL_WHOIS)
+            whois_item  = self.monitor_table.item(row, COL_WHOIS)
             status_text = whois_item.text().strip() if whois_item else ""
-            if not status_text or status_text in ("-", "Run WHOIS", "WHOIS err", "Unknown", "Active", "Idle", "Stopped"):
+            if not status_text or status_text in (
+                "-", "Run WHOIS", "WHOIS err", "Unknown", "Active", "Idle", "Stopped"
+            ):
                 continue
             lo = status_text.lower()
             if any(k in lo for k in ("pendingdelete", "available", "taken", "redemption")):
@@ -341,13 +357,14 @@ class HandlersMixin:
         ram_total = len(self.rampage_rows)
         ram_armed = sum(
             1 for d in self.rampage_rows
-            if not self._stop_event_for(d, "rampage") or not self._stop_event_for(d, "rampage").is_set()
+            if not self._stop_event_for(d, "rampage")
+               or not self._stop_event_for(d, "rampage").is_set()
         )
         self.rampage_stats_label.setText(
             f"\u26a1 Rampage queue: {ram_total} | Armed: {ram_armed}"
         )
 
-        caught = self.portfolio_table.rowCount()
+        caught     = self.portfolio_table.rowCount()
         total_cost = 0.0
         for r in range(caught):
             item = self.portfolio_table.item(r, 2)
@@ -388,7 +405,6 @@ class HandlersMixin:
         if self.settings.get("sound", True):
             QApplication.beep()
 
-    # Keep old name as alias so any internal callers don't break
     _on_success = _handle_success
 
     def _handle_failure(self, domain, error):
@@ -434,7 +450,9 @@ class HandlersMixin:
         """Slot for signals.premium_detect — prompt user about premium pricing."""
         max_prem = self.settings.get("max_premium", 500)
         if max_prem > 0 and price > max_prem:
-            self._update_status(domain, f"\U0001f4b0 Premium ${price:.0f} — skipped (>{max_prem})", "#fbbf24")
+            self._update_status(
+                domain, f"\U0001f4b0 Premium ${price:.0f} — skipped (>{max_prem})", "#fbbf24"
+            )
             self.append_log(f"[PREMIUM] {domain} ${price:.2f} > max ${max_prem} — skipped.")
             return
         msg = (
@@ -442,11 +460,15 @@ class HandlersMixin:
             f"Price: ${price:.2f} ({cents} cents)\n\n"
             f"Register anyway?"
         )
-        reply = QMessageBox.question(self, "Premium Domain", msg, QMessageBox.Yes | QMessageBox.No)
+        reply = QMessageBox.question(
+            self, "Premium Domain", msg, QMessageBox.Yes | QMessageBox.No
+        )
         if reply == QMessageBox.Yes:
             self.append_log(f"[PREMIUM] User approved {domain} at ${price:.2f}.")
         else:
-            self._update_status(domain, f"\U0001f4b0 Premium ${price:.0f} — skipped", "#fbbf24")
+            self._update_status(
+                domain, f"\U0001f4b0 Premium ${price:.0f} — skipped", "#fbbf24"
+            )
             self.append_log(f"[PREMIUM] {domain} skipped by user.")
 
     _on_premium_detect = _handle_premium
@@ -467,7 +489,7 @@ class HandlersMixin:
             item.setText(price_str)
 
     def _show_premium_result(self, domain, result_dict):
-        """Slot for signals.premium_check_result — display premium availability check result."""
+        """Slot for signals.premium_check_result."""
         available   = result_dict.get("available", False)
         price_cents = result_dict.get("price_cents", 0)
         if not available:
@@ -478,7 +500,9 @@ class HandlersMixin:
             price_usd = price_cents / 100.0
             self._update_status(domain, f"\U0001f4b0 Premium ${price_usd:.2f}", "#fbbf24")
             self._update_price_col(domain, f"${price_usd:.2f}")
-            self.append_log(f"[PREMIUM CHECK] {domain} available at ${price_usd:.2f} (premium).")
+            self.append_log(
+                f"[PREMIUM CHECK] {domain} available at ${price_usd:.2f} (premium)."
+            )
         else:
             self._update_status(domain, "\U0001f7e2 Available", "#4ade80")
             self.append_log(f"[PREMIUM CHECK] {domain} available at standard price.")
@@ -493,11 +517,13 @@ class HandlersMixin:
 
     def _add_to_portfolio(self, domain):
         price = get_tld_price(domain)
-        row = self.portfolio_table.rowCount()
+        row   = self.portfolio_table.rowCount()
         self.portfolio_table.insertRow(row)
         self.portfolio_table.setItem(row, 0, QTableWidgetItem(domain))
-        self.portfolio_table.setItem(row, 1, QTableWidgetItem(datetime.now().strftime("%Y-%m-%d %H:%M")))
-        self.portfolio_table.setItem(row, 2, QTableWidgetItem(f"${price:.2f}"))
+        self.portfolio_table.setItem(
+            row, 1, QTableWidgetItem(datetime.now().strftime("%Y-%m-%d %H:%M"))
+        )
+        self.portfolio_table.setItem(row, 2, QTableWidgetItem(f"{price}"))
         self.portfolio_table.setItem(row, 3, QTableWidgetItem("Registered"))
         self.portfolio_table.setItem(row, 4, QTableWidgetItem(""))
         self.refresh_stats()
@@ -507,7 +533,9 @@ class HandlersMixin:
         self.refresh_stats()
 
     def export_csv(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Export CSV", "caught_domains.csv", "CSV Files (*.csv)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export CSV", "caught_domains.csv", "CSV Files (*.csv)"
+        )
         if not path:
             return
         with open(path, "w", newline="", encoding="utf-8") as f:
@@ -522,7 +550,9 @@ class HandlersMixin:
         self.append_log(f"Exported {len(self.monitor_rows)} domains to {path}")
 
     def export_portfolio(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Export Portfolio", "portfolio.csv", "CSV Files (*.csv)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Portfolio", "portfolio.csv", "CSV Files (*.csv)"
+        )
         if not path:
             return
         with open(path, "w", newline="", encoding="utf-8") as f:
@@ -545,7 +575,7 @@ class HandlersMixin:
         self.append_log("Monitoring list cleared.")
 
     def generate_ai_prompt(self):
-        tokens = re.split(r"[\s,;]+", self.ai_input.toPlainText())
+        tokens  = re.split(r"[\s,;]+", self.ai_input.toPlainText())
         domains = [normalize_domain(t) for t in tokens if normalize_domain(t)]
         if not domains:
             self.append_log("No domains in AI tab.")
@@ -574,7 +604,7 @@ class HandlersMixin:
         def _run():
             try:
                 result = _w.whois(domain)
-                text = str(result)
+                text   = str(result)
             except Exception as ex:
                 text = f"Error: {ex}"
             self.signals.whois_manual_result.emit(domain, text)
