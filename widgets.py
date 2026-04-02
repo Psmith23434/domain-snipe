@@ -27,6 +27,7 @@ class Signals(QObject):
     success              = pyqtSignal(str, dict)
     failure              = pyqtSignal(str, str)
     whois_result         = pyqtSignal(str, str)
+    whois_manual_result  = pyqtSignal(str, str)   # (domain, raw_text) for manual WHOIS tab
     premium_detect       = pyqtSignal(str, float, str)
     next_check           = pyqtSignal(str, float, str)
     price_update         = pyqtSignal(str, str)
