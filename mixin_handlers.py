@@ -29,28 +29,202 @@ from utils import (
     _first_datetime,
     _norm_status,
 )
-from persistence import load_settings, save_settings, save_watchlist
+from persistence import load_settings, save_settings, save_watchlist, save_rampage_queue
 
 
 class HandlersMixin:
     """Mixin: signal callbacks, settings, misc UI state, and export methods."""
 
-    def closeEvent(self, e):
-        if self.settings.get("minimize_to_tray", True):
-            e.ignore()
-            self.hide()
-            self.tray.showMessage(
-                "Still running",
-                "Drop Catcher is still monitoring in the system tray.",
-                QSystemTrayIcon.Information,
-                3000,
-            )
+    # ------------------------------------------------------------------
+    #  Timer tick handlers (connected in main.py __init__)
+    # ------------------------------------------------------------------
+
+    def _tick_countdowns(self):
+        """Called every second by countdown_timer — refresh the Next column for
+        every active monitor/rampage domain."""
+        now = time.time()
+        for domain, ts in list(self.monitor_next_ts.items()):
+            remaining = max(0, int(ts - now))
+            row = self.monitor_rows.get(domain)
+            if row is not None:
+                item = self.monitor_table.item(row, COL_NEXT)
+                if item:
+                    item.setText(f"{remaining}s" if remaining else "now")
+        for domain, ts in list(self.rampage_next_ts.items()):
+            remaining = max(0, int(ts - now))
+            row = self.rampage_rows.get(domain)
+            if row is not None:
+                item = self.rampage_table.item(row, COL_NEXT)
+                if item:
+                    item.setText(f"{remaining}s" if remaining else "now")
+
+    def _tick_whois_countdown(self):
+        """Called every second by whois_countdown_timer — updates the WHOIS
+        progress bar while auto-WHOIS is running."""
+        self.whois_remaining = max(0, self.whois_remaining - 1)
+        interval = max(1, self.whois_interval_secs)
+        pct = int(self.whois_remaining / interval * 100)
+        self.whois_progress.setValue(pct)
+        if self.whois_remaining > 0:
+            self.whois_progress.setFormat(f"Next scan in {self.whois_remaining}s")
         else:
-            self.monitor_scheduler_stop.set()
-            self.monitor_scheduler_wake.set()
-            self.whois_worker_stop.set()
-            self.whois_worker_wake.set()
-            e.accept()
+            self.whois_progress.setFormat("Scanning...")
+
+    def _check_scheduled(self):
+        """Called every second by sched_timer — fires scheduled Rampage if the
+        schedule checkbox is checked and the clock matches."""
+        if not self.schedule_check.isChecked():
+            return
+        target = self.schedule_time.time()
+        now    = QTime.currentTime()
+        minute_key = (target.hour(), target.minute())
+        if abs(now.secsTo(target)) <= 30:
+            if self._sched_armed_for_minute != minute_key:
+                self._sched_armed_for_minute = minute_key
+                self.start_rampage_all()
+                self.append_log("⏰ Scheduled Rampage triggered.")
+        else:
+            self._sched_armed_for_minute = None
+
+    # ------------------------------------------------------------------
+    #  Stop-event helpers  (used by ActionsMixin._launch / stop_domain)
+    # ------------------------------------------------------------------
+
+    def _stop_event_for(self, domain, mode):
+        """Return the threading.Event for (domain, mode), or None."""
+        return self._stop_events.get(f"{mode}:{domain}")
+
+    def _set_stop_event_for(self, domain, mode, event):
+        self._stop_events[f"{mode}:{domain}"] = event
+
+    def _pop_stop_event_for(self, domain, mode):
+        self._stop_events.pop(f"{mode}:{domain}", None)
+
+    # ------------------------------------------------------------------
+    #  Persistence helpers
+    # ------------------------------------------------------------------
+
+    def _save_rampage_queue(self):
+        domains = []
+        for r in range(self.rampage_table.rowCount()):
+            from constants import COL_DOMAIN
+            item = self.rampage_table.item(r, COL_DOMAIN)
+            if item:
+                domains.append(item.text())
+        save_rampage_queue(domains)
+
+    def _load_rampage_queue(self):
+        from persistence import load_rampage_queue
+        return load_rampage_queue()
+
+    # ------------------------------------------------------------------
+    #  System tray
+    # ------------------------------------------------------------------
+
+    def _setup_tray(self):
+        self.tray = QSystemTrayIcon(self)
+        self.tray.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
+        tray_menu = QMenu()
+        tray_menu.addAction("Show",  self.show)
+        tray_menu.addAction("Quit",  QApplication.instance().quit)
+        self.tray.setContextMenu(tray_menu)
+        self.tray.activated.connect(self._on_tray_icon_activated)
+        self.tray.show()
+
+    # ------------------------------------------------------------------
+    #  Settings apply
+    # ------------------------------------------------------------------
+
+    def _apply_settings(self):
+        """Push persisted settings values back into the UI widgets."""
+        if self.settings.get("always_on_top", False):
+            from PyQt5.QtCore import Qt as _Qt
+            self.setWindowFlags(self.windowFlags() | _Qt.WindowStaysOnTopHint)
+            self.show()
+            if hasattr(self, "s_ontop"):
+                self.s_ontop.blockSignals(True)
+                self.s_ontop.setChecked(True)
+                self.s_ontop.blockSignals(False)
+        if hasattr(self, "s_tray"):
+            self.s_tray.blockSignals(True)
+            self.s_tray.setChecked(self.settings.get("minimize_to_tray", True))
+            self.s_tray.blockSignals(False)
+        if hasattr(self, "s_sound"):
+            self.s_sound.blockSignals(True)
+            self.s_sound.setChecked(self.settings.get("sound", True))
+            self.s_sound.blockSignals(False)
+        if hasattr(self, "s_maxprem"):
+            self.s_maxprem.blockSignals(True)
+            self.s_maxprem.setValue(self.settings.get("max_premium", 500))
+            self.s_maxprem.blockSignals(False)
+
+    # ------------------------------------------------------------------
+    #  Monitor-delay helpers  (used by MonitorMixin)
+    # ------------------------------------------------------------------
+
+    def _monitor_global_delay(self):
+        """Return the global minimum gap (seconds) between any two monitor API calls."""
+        return float(MONITOR_MAX_USER_RPS_DELAY)
+
+    def _effective_monitor_domain_interval(self):
+        """Return the per-domain cycle interval (seconds) for the current poll mode."""
+        mode_text = self.poll_mode.currentText()
+        if mode_text == "Custom":
+            return float(self.custom_secs.value())
+        return float(POLL_MODES.get(mode_text, MONITOR_MIN_PER_DOMAIN_INTERVAL))
+
+    def _update_monitor_delay_label(self):
+        """Refresh the status label that shows the current monitoring queue delay."""
+        active = self._count_active_monitor_domains()
+        if active == 0:
+            text = "Queue: idle"
+        else:
+            gap   = self._monitor_global_delay()
+            cycle = self._effective_monitor_domain_interval()
+            text  = f"Queue: {active} active | gap {gap:.1f}s | cycle {cycle:.0f}s"
+        if hasattr(self, "monitor_delay_label"):
+            self.monitor_delay_label.setText(text)
+
+    # ------------------------------------------------------------------
+    #  WHOIS interval helper  (used by MonitorMixin._toggle_auto_whois)
+    # ------------------------------------------------------------------
+
+    def _whois_interval_value(self):
+        """Parse the whois_interval_cb text and return seconds as int."""
+        text = self.whois_interval_cb.currentText().lower()
+        if "second" in text:
+            return int(re.search(r"\d+", text).group())
+        if "minute" in text:
+            return int(re.search(r"\d+", text).group()) * 60
+        return 60
+
+    # ------------------------------------------------------------------
+    #  Premium check
+    # ------------------------------------------------------------------
+
+    def run_premium_check(self, domain):
+        """Queue a background premium availability check for *domain*."""
+        self._update_status(domain, "Checking premium...", "#fbbf24")
+
+        def _run():
+            try:
+                info = check_domain(domain) or {}
+                result   = str(info.get("result", "")).lower()
+                available = result == "available"
+                price_cents = 0
+                if available and info.get("is_premium"):
+                    try:
+                        price_cents = int(float(info.get("premium_price") or 0) * 100)
+                    except Exception:
+                        price_cents = 0
+                self.signals.premium_check_result.emit(domain, {
+                    "available": available,
+                    "price_cents": price_cents,
+                })
+            except Exception as e:
+                self.signals.status_update.emit(domain, f"Premium check error: {e}")
+
+        threading.Thread(target=_run, daemon=True).start()
 
     # ------------------------------------------------------------------
     #  WHOIS result display  (called from signals thread → GUI thread)
@@ -292,8 +466,10 @@ class HandlersMixin:
                 table.setItem(row, COL_PRICE, item)
             item.setText(price_str)
 
-    def _show_premium_result(self, domain, available, price_cents):
+    def _show_premium_result(self, domain, result_dict):
         """Slot for signals.premium_check_result — display premium availability check result."""
+        available   = result_dict.get("available", False)
+        price_cents = result_dict.get("price_cents", 0)
         if not available:
             self._update_status(domain, "Unavailable", "#f87171")
             self.append_log(f"[PREMIUM CHECK] {domain} — not available.")
@@ -386,7 +562,7 @@ class HandlersMixin:
 
     def run_whois_row(self, domain):
         """Queue a single WHOIS lookup for *domain* via the background worker."""
-        self.whois_queue.put(domain)
+        self.whois_queue.append(domain)
         self.whois_worker_wake.set()
 
     def _run_whois_manual(self):
@@ -485,3 +661,20 @@ class HandlersMixin:
                 item.setCheckState(Qt.Unchecked)
                 count += 1
         self.append_log(f"[AUTO-BUY] Disarmed {count} domain(s) in Monitoring.")
+
+    def closeEvent(self, e):
+        if self.settings.get("minimize_to_tray", True):
+            e.ignore()
+            self.hide()
+            self.tray.showMessage(
+                "Still running",
+                "Drop Catcher is still monitoring in the system tray.",
+                QSystemTrayIcon.Information,
+                3000,
+            )
+        else:
+            self.monitor_scheduler_stop.set()
+            self.monitor_scheduler_wake.set()
+            self.whois_worker_stop.set()
+            self.whois_worker_wake.set()
+            e.accept()
