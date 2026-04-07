@@ -19,7 +19,11 @@ class ActionsMixin:
         d = normalize_domain(self.input.text())
         if d:
             self._add_monitor_row(d)
-            save_watchlist(self.monitor_rows.keys())
+            # BUG-05: snapshot keys under lock so the scheduler thread cannot
+            # mutate monitor_rows while we iterate it for persistence.
+            with self.monitor_scheduler_lock:
+                keys = list(self.monitor_rows.keys())
+            save_watchlist(keys)
             self.input.clear()
             self.refresh_stats()
 
@@ -82,7 +86,10 @@ class ActionsMixin:
         for d in domains:
             if self._add_monitor_row(d):
                 added += 1
-        save_watchlist(self.monitor_rows.keys())
+        # BUG-05: snapshot keys under lock before passing to persistence.
+        with self.monitor_scheduler_lock:
+            keys = list(self.monitor_rows.keys())
+        save_watchlist(keys)
         self.append_log(f"Added {added} domains to Monitoring.")
         self.refresh_stats()
 
@@ -105,10 +112,15 @@ class ActionsMixin:
         self.refresh_stats()
 
     def clear_rampage_queue(self):
-        domains = list(self.rampage_rows.keys())
+        # BUG-05: snapshot and clear rampage_rows atomically under the
+        # scheduler lock so the Rampage worker thread cannot observe a
+        # half-cleared dict.  stop_domain() calls are made *outside* the
+        # lock because they may emit signals / touch Qt widgets.
+        with self.monitor_scheduler_lock:
+            domains = list(self.rampage_rows.keys())
+            self.rampage_rows.clear()
+            self.rampage_next_ts.clear()
         self.rampage_table.setRowCount(0)
-        self.rampage_rows.clear()
-        self.rampage_next_ts.clear()
         for domain in domains:
             self.stop_domain(domain, "rampage")
         self._save_rampage_queue()
@@ -290,7 +302,9 @@ class ActionsMixin:
 
     def remove_monitor(self, domain):
         self._remove_from_table(self.monitor_table, self.monitor_rows, self.monitor_next_ts, domain, "monitor")
-        save_watchlist(self.monitor_rows.keys())
+        with self.monitor_scheduler_lock:
+            keys = list(self.monitor_rows.keys())
+        save_watchlist(keys)
         self.refresh_stats()
 
     def remove_rampage(self, domain):
