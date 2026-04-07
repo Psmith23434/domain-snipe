@@ -5,17 +5,40 @@ All items from the initial code audit are listed below. Status is updated as wor
 
 ---
 
-## 🔴 Critical — Open Bugs
+## Overview
 
-These issues can cause data loss, security exposure, or silent incorrect behaviour. Must be resolved before any public / production use.
+| ID | Title | File(s) | Priority | Status |
+|---|---|---|---|---|
+| BUG-01 | API credentials stored in source code | `config.py` | 🔴 Critical | ✅ Resolved |
+| BUG-02 | No atomic writes — watchlist data loss on crash | `persistence.py` | 🔴 Critical | ❌ Open |
+| BUG-03 | Table row index map corrupts on row deletion | `mixin_tables.py` | 🔴 Critical | ❌ Open |
+| BUG-04 | GUI widget mutations from background threads | `mixin_monitor.py`, `mixin_tables.py`, `mixin_actions.py` | 🟠 High | ❌ Open |
+| BUG-05 | Shared dict mutation without lock (data race) | `mixin_actions.py`, `mixin_monitor.py` | 🟠 High | ❌ Open |
+| MISSING-01 | No `requirements.txt` / `pyproject.toml` | project root | 🟠 High | ❌ Open |
+| BUG-06 | Hardcoded TLD prices go stale | `constants.py` | 🟡 Medium | ❌ Open |
+| BUG-07 | String-matching status dispatch is fragile | `mixin_handlers.py`, `sniper.py` | 🟡 Medium | ❌ Open |
+| IMPROVEMENT-01 | `mixin_builders.py` has no sub-structure (41 KB) | `mixin_builders.py` | 🟡 Medium | ❌ Open |
+| IMPROVEMENT-02 | No theme system — inline scattered stylesheets | `mixin_builders.py` | 🟡 Medium | ❌ Open |
+| IMPROVEMENT-03 | Watchlist saved to `~` instead of OS app data dir | `persistence.py` | 🟡 Medium | ❌ Open |
+| IMPROVEMENT-04 | `format_countdown` returns negative values | `utils.py` | 🟡 Medium | ❌ Open |
+| IMPROVEMENT-05 | No confirmation before clearing Rampage queue | `mixin_actions.py` | 🟡 Medium | ❌ Open |
+| IMPROVEMENT-06 | No unit tests | `utils.py`, `api.py`, `sniper.py` | 🟢 Low | ❌ Open |
+| IMPROVEMENT-07 | Column index constants are fragile integers | `constants.py` | 🟢 Low | ❌ Open |
+| IMPROVEMENT-08 | README was empty | `README.md` | 🟢 Low | ✅ Resolved |
+
+**Progress: 2 / 16 resolved**
+
+---
+
+## 🔴 Critical
 
 ### [BUG-01] API credentials stored in source code
 **File:** `config.py`
-**Status:** ❌ Open
+**Status:** ✅ Resolved — 2026-04-07
 
-API keys, secrets, and the Contact ID are hardcoded as plain strings. If `config.py` is ever committed with real values, credentials are permanently exposed in git history.
+API keys, secrets, and the Contact ID were hardcoded as plain strings. If `config.py` was ever committed with real values, credentials would be permanently exposed in git history.
 
-**Fix:** Load from environment variables (`os.getenv`) or a local `.env` file via `python-dotenv`. Add a first-run setup wizard in the GUI that writes credentials to `.env`. Add `config.py` to `.gitignore` and ship a `config.example.py` instead.
+**Resolution:** `config.py` now loads credentials from a local `.env` file via `python-dotenv`. `config.py` and `.env` are both listed in `.gitignore`. A `config.example.env` template is shipped in the repo. The app raises a clear `EnvironmentError` at startup if any required variable is missing.
 
 ---
 
@@ -25,7 +48,7 @@ API keys, secrets, and the Contact ID are hardcoded as plain strings. If `config
 
 `open(path, "w")` truncates the file before writing begins. A crash, power loss, or OS kill mid-write produces a zero-byte or corrupt JSON file, permanently destroying the watchlist and Rampage queue.
 
-**Fix:** Write to a `.tmp` sibling file and use `os.replace()` to atomically swap it in. Also add schema versioning so future format changes don’t silently corrupt old files.
+**Fix:** Write to a `.tmp` sibling file and use `os.replace()` to atomically swap it in. Also add schema versioning so future format changes don't silently corrupt old files.
 
 ---
 
@@ -105,7 +128,7 @@ platformdirs>=4.0
 
 At 41 KB, this is the largest file and a maintainability bottleneck. All tab UIs, table construction, settings panel, and tray icon live in one monolithic mixin. A change to the Rampage tab requires navigating thousands of lines.
 
-**Fix:** Split into `builder_monitor.py`, `builder_rampage.py`, `builder_settings.py`, `builder_log.py`. Move each tab’s construction into its own builder mixin.
+**Fix:** Split into `builder_monitor.py`, `builder_rampage.py`, `builder_settings.py`, `builder_log.py`. Move each tab's construction into its own builder mixin.
 
 ---
 
@@ -123,7 +146,7 @@ Colors and fonts are set as inline `setStyleSheet()` strings scattered across th
 **File:** `persistence.py`
 **Status:** ❌ Open
 
-JSON files are saved to the user’s home directory root, which is non-standard on all platforms.
+JSON files are saved to the user's home directory root, which is non-standard on all platforms.
 
 **Fix:** Use the `platformdirs` library: `user_data_dir("domain-snipe", "Psmith23434")` returns the correct path on Windows (`%APPDATA%`), macOS (`~/Library/Application Support`), and Linux (`~/.local/share`).
 
@@ -145,7 +168,7 @@ When `t < 0` (the scheduled check time is in the past), the function returns a n
 
 `clear_rampage_queue()` immediately wipes the entire queue with no `QMessageBox.question()` confirmation. One misclick destroys the queue.
 
-**Fix:** Add a confirmation dialog: *“Clear all X domains from the Rampage queue? This cannot be undone.”*
+**Fix:** Add a confirmation dialog: *"Clear all X domains from the Rampage queue? This cannot be undone."*
 
 ---
 
@@ -171,20 +194,12 @@ Pure utility functions (`normalize_domain`, `format_price`, `_sleep_with_stop`, 
 ```python
 from enum import IntEnum, auto
 class Col(IntEnum):
-    DRAG   = 0
-    SNIPE  = auto()
+    DRAG    = 0
+    SNIPE   = auto()
     AUTOBUY = auto()
-    DOMAIN = auto()
+    DOMAIN  = auto()
     ...
 ```
-
----
-
-### [IMPROVEMENT-08] README was empty
-**File:** `README.md`
-**Status:** ✅ Resolved — 2026-04-07
-
-The README contained only the project title. Full documentation has been written.
 
 ---
 
@@ -192,6 +207,7 @@ The README contained only the project title. Full documentation has been written
 
 | ID | Description | Resolved |
 |---|---|---|
+| BUG-01 | API credentials stored in source code | 2026-04-07 |
 | IMPROVEMENT-08 | Write README | 2026-04-07 |
 
 ---
