@@ -68,7 +68,6 @@ def _extract_expiry_from_raw_whois(raw):
 
 
 def estimate_drop_date(expiry_date, status_str, tld="com"):
-    """Return the estimated drop date as a raw YYYY-MM-DD string, or '-'."""
     try:
         now = datetime.now(timezone.utc)
         status_norm = _norm_status(status_str)
@@ -81,26 +80,33 @@ def estimate_drop_date(expiry_date, status_str, tld="com"):
         high = rule["high"]
         pd_days = rule["pending_delete_days"]
 
+        def fmt_range(a, b, prefix="~"):
+            if a.date() == b.date():
+                return f"{prefix}{a.strftime('%d.%m.%Y')}"
+            return f"{prefix}{a.strftime('%d.%m')}–{b.strftime('%d.%m.%Y')}"
+
         if "pendingdelete" in status_norm:
             if expiry is not None:
-                # Use midpoint of low/high window for the single best-estimate date
-                mid = expiry + timedelta(days=(low + high) // 2)
-                return mid.strftime("%Y-%m-%d")
+                earliest = expiry + timedelta(days=low)
+                latest = expiry + timedelta(days=high)
+                return f"🔥 {fmt_range(earliest, latest)} (pendingDelete)"
             fallback = now + timedelta(days=pd_days)
-            return fallback.strftime("%Y-%m-%d")
+            return f"🔥 ~{fallback.strftime('%d.%m.%Y')} ({pd_days}d est.)"
 
         if any(k in status_norm for k in ("redemptionperiod", "pendingrenewaldeletion", "redemption")):
             if expiry is not None:
-                mid = expiry + timedelta(days=(low + high) // 2)
-                return mid.strftime("%Y-%m-%d")
-            return "-"
+                earliest = expiry + timedelta(days=low)
+                latest = expiry + timedelta(days=high)
+                return f"⚠️ {fmt_range(earliest, latest)}"
+            return "⚠️ Redemption / pre-drop"
 
         if expiry is not None:
             if expiry > now:
-                return expiry.strftime("%Y-%m-%d")
-            mid = expiry + timedelta(days=(low + high) // 2)
-            return mid.strftime("%Y-%m-%d")
+                return f"- (active, exp {expiry.strftime('%d.%m.%Y')})"
+            earliest = expiry + timedelta(days=low)
+            latest = expiry + timedelta(days=high)
+            return fmt_range(earliest, latest)
 
-    except Exception:
-        pass
+    except Exception as e:
+        return f"- (err: {str(e)[:25]})"
     return "-"
